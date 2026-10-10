@@ -66,3 +66,11 @@ GUI 随工具打包，不需要安装 Node。`skills/ablation` 可以手工安�
 发布到包仓库的版本支持有缓存、可关闭的后台更新检查；升级由用户点击或命令触发，运行中的任务完成后再升级。当前 GitHub 预览包禁用包仓库检查和升级，待 PyPI 归属与发布配置完成后再启用；现在可从 GitHub Releases 安装新版 wheel。升级不覆盖历史证据，工具版本、数据格式版本与候选版本分别记录。
 
 项目采用 [MIT](LICENSE)，源码位于 [yiminspace/ablation](https://github.com/yiminspace/ablation)。
+
+## 外部日志关联
+
+通过 `ablation config profile NAME --observers-json observers.json` 配置可选观察器；格式和完整示例见 [英文说明](README.md#optional-external-log-tracking)。平台名称只是标签，可同时关联代理和模型服务，无配置时不注入 header、不查询外部 API。
+
+每次运行保存实验、批次和运行标识。观察器可配置追踪 header、响应 JSON Pointer、响应 header、查看链接模板，或独立日志 API 的精确匹配查询。日志查询使用单独的地址与环境变量凭证。请求追踪 ID 用 `request_id_header` / `request_id_pointer` 单独保存，不当作日志 ID；配置了 `lookup` 时，无论响应是否带 ID 都执行精确查询，以唯一匹配结果生成详情链接。GUI 的运行记录和详情展示单条日志详情与辅助日志列表链接，CLI 和导出文件保留相同证据。
+
+`available` 表示从配置的响应或唯一匹配的日志记录取得 ID 或链接；`linked` 只是生成查看入口，未确认日志存在；`unavailable` 表示关联失败。关联失败不改变模型请求结果或断言评分。旧实验无需迁移，历史记录不追补或改写。

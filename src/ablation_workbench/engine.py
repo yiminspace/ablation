@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import contextlib
 import difflib
+from datetime import datetime
 import json
 import os
 import shlex
@@ -231,18 +232,26 @@ class Workbench:
                         kind = validate_request(request)
                         target = endpoint_for(settings, kind)
                         plans.append((candidate, scene, repeat, request, kind, target))
+            from .observation import tracking_headers
+            tracking_headers(settings.get("observers", []), {"experiment_id": experiment_id, "batch_id": "validation", "run_id": "validation"})
             batch_id = new_id("batch")
             for candidate, scene, repeat, request, kind, target in plans:
                 if cancel_event is not None and cancel_event.is_set():
                     break
                 run = {"id": new_id("run"), "batch_id": batch_id, "candidate": candidate, "scenario": scene["id"], "repeat": repeat, "status": "running", "request": request, "response": None, "request_hash": digest(request), "checks": [], "passed": None, "created_at": timestamp(), "elapsed_ms": 0, "profile": profile_name, "target": target, "software_version": __version__, "owner_pid": os.getpid()}
+                tracking = {"experiment_id": experiment_id, "batch_id": batch_id, "run_id": run["id"]}
+                started = int(datetime.fromisoformat(run["created_at"]).timestamp())
+                tracking.update(start_time=started - 60, end_time=started + 600)
+                run["tracking"] = tracking
+                run["request_headers"] = tracking_headers(settings.get("observers", []), tracking)
+                run["observers"] = redact(settings.get("observers", []), secrets)
                 run["_completion_reserve"] = " " * 1024
                 with self.store.lock(experiment_id):
                     latest = self._load(experiment_id)
                     latest["runs"].append(run)
                     self.store.save(latest)
                 try:
-                    result = replay_request(request, settings, kind, secrets)
+                    result = replay_request(request, {**settings, "_tracking_headers": run["request_headers"], "_tracking_context": tracking}, kind, secrets)
                     if result["status"] == "completed":
                         result["checks"] = evaluate_checks(result["response"], scene["checks"])
                         result["passed"] = all(check["passed"] for check in result["checks"]) if result["checks"] else None
@@ -521,6 +530,18 @@ class Workbench:
             validate_patch_credentials(baseline["request"], scene["patch"], [])
             validate_checks(scene["checks"])
         for run in experiment["runs"]:
+            from .observation import evidence_url, validate_observers
+            if "observers" in run:
+                validate_observers(run["observers"])
+            if "external_evidence" in run:
+                require(isinstance(run["external_evidence"], list), "external evidence must be a list")
+                for item in run["external_evidence"]:
+                    require(isinstance(item, dict), "external evidence must contain objects")
+                    text(item.get("platform"), "external evidence platform", empty=False)
+                    require(item.get("status") in {"available", "linked", "unavailable"}, "unknown external evidence status")
+                    for field in ("url", "batch_url"):
+                        if field in item:
+                            evidence_url(item[field])
             find_item(experiment["candidates"], run["candidate"], "candidate")
             find_item(experiment["scenarios"], run["scenario"], "scenario")
             integer(run.get("repeat"), "run repeat", 1)

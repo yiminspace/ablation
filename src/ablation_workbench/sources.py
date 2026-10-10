@@ -25,10 +25,16 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def configured_secrets(config: dict) -> list[str]:
     values = []
-    for profile in config.get("profiles", {}).values():
-        for key, value in profile.items():
-            if key.endswith("_env") and key != "source_user_env" and isinstance(value, str) and os.environ.get(value):
-                values.append(os.environ[value])
+    def visit(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key.endswith("_env") and key != "source_user_env" and isinstance(item, str) and os.environ.get(item):
+                    values.append(os.environ[item])
+                visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+    visit(config.get("profiles", {}))
     return sorted(set(values), key=len, reverse=True)
 
 

@@ -2,6 +2,12 @@
 
 <!-- version list -->
 
+## Unreleased
+
+- Add optional platform-neutral replay tracing headers, response ID/link extraction, and independently authenticated log lookups.
+- Save external evidence with each run and display log links in the GUI without treating association failure as model failure.
+
+
 ## 0.1.0 — development preview
 
 Initial open-source preview, distributed through GitHub Releases. PyPI publication and registry updates remain disabled.

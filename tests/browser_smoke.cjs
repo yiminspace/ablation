@@ -21,7 +21,7 @@ async function main(){
     res.end(JSON.stringify({id:'synthetic-response',output:[{type:'message',content:[{type:'output_text',text}]}]}));
   });});
   await new Promise(r=>model.listen(0,'127.0.0.1',r));
-  fs.writeFileSync(path.join(workspace,'config.json'),JSON.stringify({schema_version:1,profiles:{fixture:{base_url:`http://127.0.0.1:${model.address().port}`}},agent:{backend:'command',command:[python,'-c','import sys; sys.stdin.read(); print("Fixture explanation: authorized choices define the current task.")'],timeout_seconds:20}}));
+  fs.writeFileSync(path.join(workspace,'config.json'),JSON.stringify({schema_version:1,profiles:{fixture:{base_url:`http://127.0.0.1:${model.address().port}`,observers:[{name:"Fixture logs",record_id_pointer:"/id",url_template:"https://logs.example.invalid/records/{record_id}"}]}},agent:{backend:'command',command:[python,'-c','import sys; sys.stdin.read(); print("Fixture explanation: authorized choices define the current task.")'],timeout_seconds:20}}));
   const appEnv={...process.env,ABLATION_UPDATE_CHECK:'0'};
   if(process.env.ABLATION_USE_INSTALLED)delete appEnv.PYTHONPATH;else appEnv.PYTHONPATH=path.join(root,'src');
   child=spawn(python,['-m','ablation_workbench','--workspace',workspace,'gui','--no-open'],{cwd:process.env.ABLATION_USE_INSTALLED?workspace:root,env:appEnv,stdio:['ignore','pipe','pipe']});
@@ -88,6 +88,13 @@ async function main(){
   assert.equal(packets[0].temperature,packets[1].temperature);
   await page.locator('.page-tab[data-tab="runs"]').click();
   await page.locator('#runs-view').getByText('断言未通过',{exact:true}).first().waitFor({timeout:15000});
+  await page.locator('#runs-view a').first().waitFor();
+  assert.equal(await page.locator('#runs-view a').first().getAttribute('href'),'https://logs.example.invalid/records/synthetic-response');
+  assert.equal(await page.locator('#runs-view a').first().textContent(),'Fixture logs 详情');
+  await page.locator('[data-run-detail]').first().click();
+  await page.getByText('外部证据',{exact:true}).last().waitFor();
+  await page.locator('#modal a').first().waitFor();
+  await page.keyboard.press('Escape');
   await page.locator('[data-tab="diff"]').click();
   await page.locator('[data-artifact="response"]').click();
   await page.getByText('fixture candidate',{exact:false}).first().waitFor();

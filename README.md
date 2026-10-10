@@ -103,6 +103,53 @@ The summary counts historical runs for the selected versions and scenario, so a 
 
 Replay invokes a single model request. Returned tool calls are inspected as data and never executed. A model response does not prove that an external action occurred.
 
+## Optional external log tracking
+
+Replay profiles may configure independent observers through `config profile NAME --observers-json observers.json`. The file is an array, so a request passing through a proxy and a model gateway can retain both records. No tracking headers or external lookups are enabled by default.
+
+```json
+[
+  {
+    "name": "Gateway logs",
+    "headers": {"X-Trace-Id": "{run_id}"},
+    "record_id_header": "X-Request-Id",
+    "url_template": "https://logs.example.invalid/records/{record_id}"
+  },
+  {
+    "name": "Capture proxy",
+    "record_id_pointer": "/capture/entry_id",
+    "url_pointer": "/capture/view_url"
+  }
+]
+```
+
+These are synthetic examples; select header names, response fields, and URL routes documented by your service. `headers` templates accept `{experiment_id}`, `{batch_id}`, and `{run_id}`. They cannot override authentication or transport headers. Response extraction supports JSON Pointers (`record_id_pointer`, `url_pointer`) and case-insensitive HTTP headers (`record_id_header`, `url_header`). Use `request_id_pointer` or `request_id_header` for transport correlation IDs that are not external log IDs; they remain separate and can be used as `{request_id}` in lookup templates. `url_template` and optional `batch_url_template` also accept `{record_id}`, `{response_id}`, `{start_time}`, and `{end_time}` (Unix seconds bounding this run); substituted values are URL-encoded. Escape literal JSON braces in templates as `{{` and `}}`.
+
+For Bifrost, inject a unique run metadata header and configure an exact lookup against that metadata. Extract the actual log ID and construct its `selected_log` detail URL; do not use the transport `x-request-id` as the log ID. A metadata-filter search URL is only a list entry point. A TapeProxy target can extract an entry reference from its documented response header or API. Platform names are labels, not built-in routing: another service uses the same mappings without changing the replay engine.
+
+An optional `lookup` reads a separate JSON log API after inference. It requires `source_base_url`, a relative `source_path` template, `match_pointer`, and `match_value`. Optional `records_pointer` selects the record array; `record_id_pointer` and `url_pointer` extract the uniquely matched record. Lookup authentication uses its own `token_env` or `source_user_env` / `source_password_env`, never the inference API key. For example:
+
+```json
+{
+  "name": "Separate log service",
+  "headers": {"X-Trace-Id": "{run_id}"},
+  "lookup": {
+    "source_base_url": "https://logs.example.invalid",
+    "source_path": "/api/logs?trace={run_id}",
+    "token_env": "LOG_READ_TOKEN",
+    "records_pointer": "/records",
+    "match_pointer": "/trace_id",
+    "match_value": "{run_id}",
+    "record_id_pointer": "/id"
+  },
+  "url_template": "https://logs.example.invalid/records/{record_id}"
+}
+```
+
+A configured lookup is authoritative even when response extraction returns an ID or URL. Each lookup performs one bounded request (5-second timeout), requires one exact match, and follows no redirects. Missing, ambiguous, delayed, or failed log association is recorded as `unavailable` without changing the model result or assertion score. `available` means a record ID or link was obtained from the configured response or matching API record; `linked` means only a search/view URL was constructed, not that a log exists or is accessible.
+
+Runs retain local tracking IDs, the injected non-secret headers, selected response headers, an observer configuration snapshot, and `external_evidence` records with `platform`, `status`, and optional `request_id`, `record_id`, `url`, `batch_url`, or `error`. The GUI displays links in run history and details; CLI JSON and exported bundles retain the same evidence. Profiles without observers still retain the model response ID and standard request-ID headers when supplied. Historical runs remain unchanged and import without the new optional fields.
+
 ## Review and continue
 
 Click a diff line's **+**, add a comment, then finish the review. Comments retain the reviewed version, scenario, location and before/after snippets.
