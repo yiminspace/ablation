@@ -60,10 +60,15 @@ def configure_profile(args, workspace):
         profile[key] = value
     if args.source_fields_json is not None:
         profile["source_fields"] = json.loads(args.source_fields_json)
+    if args.observers_json is not None:
+        profile["observers"] = read_json(args.observers_json)
+    from .observation import validate_observers
+    validate_observers(profile.get("observers", []))
     config = read_config(workspace)
     config.setdefault("profiles", {}).setdefault(args.name, {}).update(profile)
     from .sources import validate_source_profile
     validate_source_profile(config["profiles"][args.name])
+    validate_observers(config["profiles"][args.name].get("observers", []))
     save_config(workspace, config)
     return {"profile": args.name, "config": str(config_path(workspace)), "settings": config["profiles"][args.name]}
 
@@ -121,6 +126,7 @@ def parser():
     profile = cs.add_parser("profile"); profile.add_argument("name")
     for flag in ("base-url", "source-base-url", "source-path", "source-request-pointer", "source-response-pointer", "api-key-env", "token-env", "source-user-env", "source-password-env"):
         profile.add_argument("--" + flag)
+    profile.add_argument("--observers-json", help="JSON file containing optional tracking headers and external evidence observers")
     profile.add_argument("--source-fields-json", help="JSON object mapping top-level request field names to source JSON Pointers")
     agent = sub.add_parser("agent"); ats = agent.add_subparsers(dest="agent_action", required=True)
     ac = ats.add_parser("configure"); ac.add_argument("--backend", choices=["codex", "command"], default="codex")

@@ -192,6 +192,8 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     if profile.get("api_key_env"):
         headers["Authorization"] = f"Bearer {env_value(profile['api_key_env'])}"
+    headers.update(profile.get("_tracking_headers", {}))
+    observed_headers = {}
     timeout = profile.get("timeout_seconds", 120)
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 1 <= timeout <= 300:
         raise ValueError("Replay timeout_seconds must be between 1 and 300")
@@ -201,6 +203,7 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
     try:
         http_request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.build_opener(NoRedirect).open(http_request, timeout=timeout) as http_response:
+            observed_headers = {name.lower(): value for name, value in http_response.headers.items()}
             body = http_response.read(MAX_BYTES + 1)
             if len(body) > MAX_BYTES:
                 raise ValueError("Model response exceeds 32 MiB")
@@ -220,6 +223,7 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
             else:
                 result["status"] = "completed"
     except urllib.error.HTTPError as error:
+        observed_headers = {name.lower(): value for name, value in error.headers.items()}
         result["error"] = f"Model endpoint returned HTTP {error.code}"
         raw = error.read(65536)
         try:
@@ -231,4 +235,9 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
     except (ValueError, UnicodeError, TypeError, KeyError) as error:
         result["error"] = redact(str(error), secrets)
     result["elapsed_ms"] = round((time.monotonic() - started) * 1000)
+    from .observation import collect_evidence
+    observers = profile.get("observers", [])
+    allowed = {"x-request-id", "request-id"} | {observer.get(key, "").lower() for observer in observers for key in ("request_id_header", "record_id_header", "url_header")}
+    result["response_headers"] = redact({k: v for k, v in observed_headers.items() if k in allowed}, secrets)
+    result["external_evidence"] = collect_evidence(observers, profile.get("_tracking_context", {}), result["response"], observed_headers, secrets or [])
     return result
