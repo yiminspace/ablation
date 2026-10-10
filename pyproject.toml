@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ablation-workbench"
+dynamic = ["version"]
+description = "A local CLI and review GUI for reproducible prompt experiments"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Ablation contributors" }]
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+ablation = "ablation_workbench.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yiminspace/ablation"
+Repository = "https://github.com/yiminspace/ablation"
+Issues = "https://github.com/yiminspace/ablation/issues"
+Changelog = "https://github.com/yiminspace/ablation/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/ablation_workbench/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ablation_workbench"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/skills", "/tests", "/docs", "/README.md", "/README.zh-CN.md", "/CONTRIBUTING.md", "/CHANGELOG.md", "/LICENSE", "/pyproject.toml", "/hatch_build.py", "/package.json", "/package-lock.json"]
+
+[tool.semantic_release]
+version_variables = ["src/ablation_workbench/__init__.py:__version__"]
+allow_zero_version = true
+major_on_zero = false
+tag_format = "v{version}"
+commit_message = "chore(release): {version}"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.changelog]
+mode = "update"
+insertion_flag = "<!-- version list -->"
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
+output_format = "md"

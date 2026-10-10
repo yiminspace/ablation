@@ -1,0 +1,63 @@
+name: Publish after owner review
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Exact reviewed release tag, such as v0.1.0'
+        required: true
+        type: string
+      confirmation:
+        description: 'Type publish after reviewing the complete public contents and package ownership'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: vars.ABLATION_PUBLIC_RELEASE == 'enabled' && inputs.confirmation == 'publish'
+    runs-on: ubuntu-latest
+    environment: public-release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install build twine
+      - name: Verify reviewed tag matches package
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python - <<'PY'
+          import os, re, subprocess
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', tag):
+              raise SystemExit('A stable version tag is required')
+          text = Path('src/ablation_workbench/__init__.py').read_text()
+          version = re.search(r'^__version__ = "([^"]+)"$', text, re.M).group(1)
+          tags = subprocess.check_output(['git', 'tag', '--points-at', 'HEAD'], text=True).splitlines()
+          if tag != 'v' + version or tag not in tags:
+              raise SystemExit('The selected tag and package version must match')
+          PY
+      - run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: src
+          ABLATION_UPDATE_CHECK: '0'
+      - name: Enable registry updates only in approved public distributions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/ablation_workbench/__init__.py')
+          source = path.read_text()
+          assert source.count('RELEASE_PUBLISHED = False') == 1
+          path.write_text(source.replace('RELEASE_PUBLISHED = False', 'RELEASE_PUBLISHED = True'))
+          PY
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - uses: pypa/gh-action-pypi-publish@release/v1

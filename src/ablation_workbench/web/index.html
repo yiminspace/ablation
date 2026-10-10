@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Ablation · Prompt workbench</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body class="focused-workbench">
+  <a class="skip-link" href="#main">跳到实验内容</a>
+  <header class="global-header">
+    <a href="/" class="brand" aria-label="Ablation 首页"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h5m8 8h5M5 5l3 3-3 3m14 2-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>ablation</strong><span class="badge">本地</span></a>
+    <div class="header-actions"><button class="btn" data-action="experiments">实验</button><button class="btn" data-action="import">导入数据</button><button class="btn quiet" id="update-indicator" data-action="updates" hidden>有可用更新</button><button class="btn icon-btn" data-action="settings" aria-label="设置与版本" title="设置与版本"><svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-7 1v4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button></div>
+  </header>
+  <div id="global-status" class="global-status" role="status" aria-live="polite" hidden></div>
+  <main id="main" tabindex="-1">
+    <section id="empty-state" class="empty-state" hidden>
+      <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><path d="M13 7h15l8 8v26H13zM28 7v9h8M19 24h10m-10 6h10m-5-11v10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      <h1>从一条请求开始，看清每次修改。</h1>
+      <p>导入模型请求或日志，对比提示词、测试输入和实际输出。评论与实验保存在同一个工作区。</p>
+      <div class="button-row"><button class="btn primary" data-action="import">导入数据</button><button class="btn" data-action="demo">打开合成示例</button></div>
+      <p class="muted small">示例不调用模型。实际 replay 需要配置推理连接，并由你点击运行。</p>
+    </section>
+    <section id="experiment" hidden>
+      <div class="experiment-heading">
+        <div class="heading-row"><h1 id="experiment-title"></h1><div class="button-row"><button class="text-btn detail-link" data-action="experiment-details">实验详情</button><button class="btn primary" data-action="run">运行比较</button></div></div>
+        <nav class="page-tabs" aria-label="实验视图"><button class="page-tab" data-tab="diff" aria-current="page">改动</button><button class="page-tab" data-tab="discussion">讨论 <span class="count" id="discussion-count" hidden>0</span></button><button class="page-tab" data-tab="runs">运行记录 <span class="count" id="runs-count" hidden>0</span></button></nav>
+      </div>
+      <div class="experiment-content">
+        <div id="active-jobs" aria-live="polite"></div>
+        <section id="diff-view">
+          <div class="toolbar review-toolbar">
+            <nav class="artifact-nav" aria-label="比较内容"><button class="artifact-tab" data-artifact="prompt" aria-pressed="true">提示词</button><button class="artifact-tab" data-artifact="response" aria-pressed="false">输出结果</button><details id="more-evidence" class="evidence-menu"><summary>更多证据<span id="selected-evidence"></span></summary><div class="evidence-options"><button data-artifact="input" aria-pressed="false">测试输入</button><button data-artifact="source" aria-pressed="false">原始数据</button><button data-artifact="request" aria-pressed="false">完整请求</button><button data-artifact="checks" aria-pressed="false">判断标准</button></div></details></nav>
+            <div class="button-row"><button class="btn quiet" data-action="toggle-comparison" aria-expanded="false" aria-controls="comparison-settings">比较设置</button><button class="btn primary" data-action="review">提交评论 <span class="count" id="draft-count" hidden>0</span></button></div>
+          </div>
+          <section id="comparison-settings" class="comparison-settings" aria-label="比较设置" hidden><div class="compare-controls"><label>改动前 <select id="base-select" aria-label="基准候选"></select></label><label>改动后 <select id="candidate-select" aria-label="待比较候选"></select></label><label>测试场景 <select id="scenario-select" aria-label="测试场景"></select></label></div><div class="settings-actions"><div class="segmented" aria-label="Diff 布局"><button class="btn" data-layout="unified" aria-pressed="false">合并视图</button><button class="btn" data-layout="split" aria-pressed="true">左右对照</button></div><div class="button-row"><button class="text-btn" data-action="candidate">新建候选</button><button class="text-btn" data-action="scenario">新建场景</button></div></div><div id="scenario-context" class="scenario-context"></div></section>
+          <div class="workspace-grid"><div class="diff-main"><div id="comparison-status"></div><div id="diff-file" class="diff-file" aria-busy="false"></div><div class="diff-footer"><span>行旁 ＋ 添加评论</span><span id="draft-storage-status">草稿自动保存在当前浏览器</span></div></div></div>
+        </section>
+        <section id="discussion-view" hidden aria-label="讨论记录"></section>
+        <section id="runs-view" hidden aria-label="运行记录"></section>
+      </div>
+    </section>
+  </main>
+  <dialog id="modal" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title"></h2><button class="text-btn" data-action="close-modal" aria-label="关闭对话框">关闭</button></div><div id="modal-body" class="modal-body"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

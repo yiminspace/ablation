@@ -1,0 +1,68 @@
+# Ablation
+
+本地 Prompt 调试工作台：导入请求或日志，修改候选，回放对比，用 GitHub 风格 diff 和行内评论检查证据。
+
+CLI 与 GUI 使用同一份实验记录。可选 `/ablation` skill 从对话上下文识别已有请求、日志或实验。工具自带数据转换和 replay，可以直接使用 CLI，也可以由 Agent 配合 skill 操作。
+
+这是通过 [GitHub Releases](https://github.com/yiminspace/ablation/releases) 分发的开发预览，尚未发布到 PyPI。支持 macOS / Linux，需要 Python 3.11+。从源码安装：
+
+```sh
+git clone https://github.com/yiminspace/ablation.git
+cd ablation
+uv tool install .
+ablation demo --open
+```
+
+也可下载 Release 中的 wheel，运行 `uv tool install /path/to/ablation_workbench-0.1.0-py3-none-any.whl`；`pipx install .` 同样支持源码安装。示例全部为人工构造，不会请求模型；未运行的输出明确显示为未测试。
+
+## 使用方式
+
+1. 使用 `ablation config profile --help` 配置数据源与推理端点。配置只保存环境变量名，凭证由使用者自行提供；查询日志与执行推理使用各自凭证。
+2. 用 `ablation import request.json --format request` 导入原始请求；`--format log` 用于日志，`--format capture` 用于包含 request / response 的 JSON 记录。不同日志结构通过 profile 的 JSON Pointer 映射配置。
+3. 用 `ablation gui` 打开工作台。首屏查看提示词改动及理由；在“比较设置”中创建候选和场景，在“更多证据”中查看输入、原始数据、完整请求和判断标准。
+4. 在相同场景下回放原版和候选。查看实际请求、响应及断言结果；没有断言的运行显示为未评分。
+5. 在变更行旁点 `+` 添加评论，批量提交。可复制到当前对话，也可交给已配置的 Agent。
+
+首屏汇总统计所选版本与场景的全部历史回放，后一次通过不会掩盖之前的失败。响应 diff 展示最近完成的输出，更早的证据可在运行记录中查看。
+
+完整配置、命令与示例见 [English README](README.md)。
+
+## 接入数据源
+
+请求文件可以直接导入；HTTP 记录可使用 `request.body` 和 `response.body` 保存 JSON 正文。日志默认读取 `params` 中的请求字段，并用顶层 `model`、`input`、`messages`、`tools` 覆盖同名字段。任意嵌套结构可配置 `--source-request-pointer` 选出完整请求，或通过 `--source-fields-json` 将顶层请求字段映射到原始记录中的 JSON Pointer。`--source-response-pointer` 用于历史响应；没有响应时省略。映射路径不存在会报错。
+
+远程 JSON 数据源需要显式配置 `--source-base-url`，再提供同 origin 的完整 JSON URL，或用 `--source-path '/records/{ref}'` 将记录引用拼接成接口路径。`ablation import record-123 --ref --format log --profile logs` 强制把输入当作引用。来源认证选择 `--token-env`，或 `--source-user-env` / `--source-password-env`；模型推理独立使用 `--base-url` / `--api-key-env`。这些环境变量的值由使用者提供。
+
+网页分享链接不一定是 JSON 接口。可以先用已有工具导出 JSON，再从文件、stdin 或 GUI 上传导入。原始记录与实际回放请求分别保存，转换说明和 diff 展示还原过程。
+
+## 评论与继续运行
+
+询问“为什么这样改”时选择“追问解释”，解释写回原评论，不产生新候选或新运行。明确要求修改时选择“请求修改”，Agent 创建下一版并按要求验证。默认候选保存在实验中；要应用到业务仓库时，由用户明确要求 Agent 操作相应代码。
+
+点击已保存评论的“继续追问”会保留当时的原文和证据，即使后来重新回放也可以继续讨论旧结果。尚未提交的旧响应草稿仍需核对变化后再提交。
+
+自动模式先配置一次：
+
+```sh
+ablation agent configure --backend codex --cwd /path/to/project
+```
+
+其他 Agent 可以配置读取 stdin 的命令。复制模式不需要 ablation 启动 Agent，手工粘贴后，Agent 通过 `ablation review reply` 把回答写回 GUI。这里没有宣称可以直接唤醒正在使用的桌面聊天。
+
+## 证据与范围
+
+- 原始日志与重建后的请求分别保留，展示重建差异和缺失字段。
+- 测试场景标明真实来源或人工构造，写明修改的条件，避免相同 Query 掩盖输入差异。
+- Prompt、输入、完整请求、输出、断言分别展示；旧候选保留，便于回看过拟合改动。
+- 回放只验证单次模型请求，不执行模型返回的工具调用，也不证明外部操作已完成。
+- 运行次数、独立场景数和断言结果分别记录，小样本全通过不等于统计稳定性证明。
+
+## 安装、数据与更新
+
+GUI 随工具打包，不需要安装 Node。`skills/ablation` 可以手工安装到 Agent 的 skill 目录；当前不做 skill 自动安装或版本同步。
+
+工作区默认在 `~/.local/share/ablation`，可用 `--workspace` 指定。实验和评论存储在本地，支持导出导入；导出文件可能包含原始提示词和模型响应，共享前检查内容。
+
+发布到包仓库的版本支持有缓存、可关闭的后台更新检查；升级由用户点击或命令触发，运行中的任务完成后再升级。当前 GitHub 预览包禁用包仓库检查和升级，待 PyPI 归属与发布配置完成后再启用；现在可从 GitHub Releases 安装新版 wheel。升级不覆盖历史证据，工具版本、数据格式版本与候选版本分别记录。
+
+项目采用 [MIT](LICENSE)，源码位于 [yiminspace/ablation](https://github.com/yiminspace/ablation)。

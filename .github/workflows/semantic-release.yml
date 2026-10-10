@@ -1,0 +1,36 @@
+name: Prepare version for review
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ablation-version
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: src
+          ABLATION_UPDATE_CHECK: '0'
+      - run: python -m pip install python-semantic-release==10.5.3 build
+      - name: Derive version and changelog without committing, tagging, or publishing
+        run: semantic-release version --no-commit --no-tag --no-push --no-vcs-release --skip-build
+      - run: python -m build
+      - name: Save the reviewable patch
+        run: git diff --binary > release-preparation.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-preparation
+          path: |
+            release-preparation.patch
+            CHANGELOG.md
+            dist/*
