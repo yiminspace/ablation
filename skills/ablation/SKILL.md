@@ -23,9 +23,11 @@ Inspect normalization notes and the source-to-request diff. A reconstructed log 
 
 State the intended behavior and the smallest plausible prompt change. Save a candidate with rationale. Keep candidate prompt changes, scenario input changes, and evaluation checks distinct. Synthetic scenarios need a plain-language description of exactly which facts were changed and why; never present them as observed production events.
 
+Write the candidate rationale as two short sentences or paragraphs: first the problem and intended improvement; then the conceptual code location and impact. Link a verified GitHub source location using `[human-readable location](https://github.com/OWNER/REPO/blob/COMMIT/path#Lx-Ly)` rather than listing filenames in prose. Verify the repository, revision, and lines; distinguish client-provided tool fields from backend definitions or transformations before claiming the scope. Describe parameter or client effects only when supported; mark unknown origins or locations as pending confirmation. Pass the text through `--rationale`, or use `--rationale-file` for multiline UTF-8 text when supported by the installed CLI. The GUI renders source links within the rationale below the diff; no separate Check view is needed.
+
 Run comparable baseline and candidate requests under the same scenario and profile. Use a bounded number of repeats appropriate to the question. Assertions are explicit checks of the actual output; absent checks mean unscored, and network failures are not behavioral failures. Avoid writing a rule that mentions the particular test answer or downstream implementation label only to pass one example.
 
-Show the local GUI for source, prompt, input, request, response, and assertion differences. Explain observed behavior and uncertainty; repeating one example does not demonstrate general reliability. Model tool calls are recorded evidence, not executed actions or proof of a real-world outcome.
+Use the CLI to inspect sources, inputs, assertions, and raw artifacts. The local GUI shows the complete modified request against the fixed imported baseline, with model outputs in a second tab; inspect other versions in run records. Explain observed behavior and uncertainty; repeating one example does not demonstrate general reliability. Model tool calls are recorded evidence, not executed actions or proof of a real-world outcome.
 
 ## Review loop
 

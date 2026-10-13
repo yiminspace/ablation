@@ -32,10 +32,10 @@
         <div id="active-jobs" aria-live="polite"></div>
         <section id="diff-view">
           <div class="toolbar review-toolbar">
-            <nav class="artifact-nav" aria-label="比较内容"><button class="artifact-tab" data-artifact="prompt" aria-pressed="true">提示词</button><button class="artifact-tab" data-artifact="response" aria-pressed="false">输出结果</button><details id="more-evidence" class="evidence-menu"><summary>更多证据<span id="selected-evidence"></span></summary><div class="evidence-options"><button data-artifact="input" aria-pressed="false">测试输入</button><button data-artifact="source" aria-pressed="false">原始数据</button><button data-artifact="request" aria-pressed="false">完整请求</button><button data-artifact="checks" aria-pressed="false">判断标准</button></div></details></nav>
-            <div class="button-row"><button class="btn quiet" data-action="toggle-comparison" aria-expanded="false" aria-controls="comparison-settings">比较设置</button><button class="btn primary" data-action="review">提交评论 <span class="count" id="draft-count" hidden>0</span></button></div>
+            <nav class="artifact-nav" aria-label="比较内容"><button class="artifact-tab" data-artifact="changes" aria-pressed="true">实际改动</button><button class="artifact-tab" data-artifact="response" aria-pressed="false">输出结果</button></nav>
+            <div class="button-row"><button class="btn primary" data-action="review">提交评论 <span class="count" id="draft-count" hidden>0</span></button></div>
           </div>
-          <section id="comparison-settings" class="comparison-settings" aria-label="比较设置" hidden><div class="compare-controls"><label>改动前 <select id="base-select" aria-label="基准候选"></select></label><label>改动后 <select id="candidate-select" aria-label="待比较候选"></select></label><label>测试场景 <select id="scenario-select" aria-label="测试场景"></select></label></div><div class="settings-actions"><div class="segmented" aria-label="Diff 布局"><button class="btn" data-layout="unified" aria-pressed="false">合并视图</button><button class="btn" data-layout="split" aria-pressed="true">左右对照</button></div><div class="button-row"><button class="text-btn" data-action="candidate">新建候选</button><button class="text-btn" data-action="scenario">新建场景</button></div></div><div id="scenario-context" class="scenario-context"></div></section>
+
           <div class="workspace-grid"><div class="diff-main"><div id="comparison-status"></div><div id="diff-file" class="diff-file" aria-busy="false"></div><div class="diff-footer"><span>行旁 ＋ 添加评论</span><span id="draft-storage-status">草稿自动保存在当前浏览器</span></div></div></div>
         </section>
         <section id="discussion-view" hidden aria-label="讨论记录"></section>

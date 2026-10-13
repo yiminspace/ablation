@@ -35,6 +35,32 @@ class EngineFixture(unittest.TestCase):
 
 
 class EngineTests(EngineFixture):
+    def test_changes_show_input_edits_and_keep_original_baseline(self):
+        experiment = self.workbench.add_candidate(self.id, label="Remove message", patch=[{"op": "remove", "path": "/input/0"}], rationale="Check all request changes.")
+        candidate = experiment["candidates"][-1]["id"]
+        diff = self.workbench.compare(self.id, candidate=candidate, artifact="changes")
+        self.assertIn("Did it send?", diff["before"])
+        self.assertNotIn("Did it send?", diff["after"])
+        self.assertTrue(any(row["kind"] != "equal" for row in diff["rows"]))
+        scenario = self.add_scenario()
+        tool_candidate = self.add_candidate()
+        diff = self.workbench.compare(self.id, candidate=tool_candidate, scenario=scenario, artifact="changes")
+        self.assertIn("Did it send?", diff["before"])
+        self.assertNotIn("unconfirmed", diff["before"])
+        self.assertIn("unconfirmed", diff["after"])
+
+    def test_json_changes_preserve_structure_and_review_evidence(self):
+        experiment = self.workbench.add_candidate(self.id, label="Multiline", patch=[{"op": "replace", "path": "/instructions", "value": "Report only verified outcomes.\nCheck evidence first."}], rationale="Readable review.")
+        candidate = experiment["candidates"][-1]["id"]
+        diff = self.workbench.compare(self.id, candidate=candidate, artifact="changes")
+        self.assertEqual(json.loads(diff["before"]), self.request)
+        self.assertEqual(list(json.loads(diff["before"])), list(self.request))
+        self.assertEqual(json.loads(diff["after"])["instructions"], "Report only verified outcomes.\nCheck evidence first.")
+        row = next(row for row in diff["rows"] if row["kind"] == "replace")
+        review = self.workbench.submit_review(self.id, {"candidate": candidate, "comments": [dict(row, artifact="changes", text="Explain this instruction.")]})
+        self.assertEqual(review["comments"][0]["after"], row["after"])
+        self.assertEqual(review["snapshot"]["diffs"]["changes"]["after"], diff["after"])
+
     def test_immutable_baseline_and_full_tools_array(self):
         candidate = self.add_candidate()
         experiment = self.workbench.get(self.id)
