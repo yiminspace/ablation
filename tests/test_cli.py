@@ -10,6 +10,27 @@ from ablation_workbench.cli import main, read_json
 
 
 class CLITests(unittest.TestCase):
+    def test_multiline_rationale_file_and_inline_text_share_diff_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request = Path(directory) / "request.json"
+            request.write_text(json.dumps({"model": "fixture", "instructions": "Original instruction", "input": "Task"}))
+            status, output, error = self.invoke(directory, ["import", str(request)])
+            self.assertEqual(status, 0, error)
+            experiment = json.loads(output)
+            patch_file = Path(directory) / "patch.json"
+            patch_file.write_text(json.dumps([{"op": "replace", "path": "/instructions", "value": "Updated instruction"}]))
+            explanation = "减少工具选择绕路。\n修改后端生成[工具描述](https://github.com/example/project/blob/main/tools.py#L10)的地方，不改工具参数。"
+            rationale_file = Path(directory) / "rationale.md"
+            rationale_file.write_text(explanation, encoding="utf-8")
+            for flags in (["--rationale-file", str(rationale_file)], ["--rationale", explanation]):
+                status, output, error = self.invoke(directory, ["candidate", experiment["id"], "--label", "Updated", "--patch", str(patch_file), *flags])
+                self.assertEqual(status, 0, error)
+                candidate = json.loads(output)["candidates"][-1]
+                self.assertEqual(candidate["rationale"], explanation)
+                status, output, error = self.invoke(directory, ["diff", experiment["id"], "--candidate", candidate["id"], "--artifact", "changes"])
+                self.assertEqual(status, 0, error)
+                self.assertEqual(json.loads(output)["rationale"], explanation)
+
     def invoke(self, directory, args):
         out, error = StringIO(), StringIO()
         with redirect_stdout(out), redirect_stderr(error):

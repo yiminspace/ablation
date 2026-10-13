@@ -97,7 +97,10 @@ def parser():
     candidate = sub.add_parser("candidate", help="Create an immutable candidate")
     candidate.add_argument("experiment"); candidate.add_argument("--label", required=True)
     candidate.add_argument("--patch", required=True, help="JSON Patch file or '-' for stdin")
-    candidate.add_argument("--rationale", required=True); candidate.add_argument("--parent", default="baseline")
+    rationale = candidate.add_mutually_exclusive_group(required=True)
+    rationale.add_argument("--rationale", help="Why the change helps, then verified source location and impact; supports GitHub Markdown links")
+    rationale.add_argument("--rationale-file", type=Path, help="UTF-8 file containing the same explanation, including newlines and source links")
+    candidate.add_argument("--parent", default="baseline")
     scenario = sub.add_parser("scenario", help="Create an immutable test input and explicit checks")
     scenario.add_argument("experiment"); scenario.add_argument("--label", required=True)
     scenario.add_argument("--patch", required=True); scenario.add_argument("--description", required=True)
@@ -110,7 +113,7 @@ def parser():
     diff = sub.add_parser("diff")
     diff.add_argument("experiment"); diff.add_argument("--base", default="baseline")
     diff.add_argument("--candidate", default="baseline"); diff.add_argument("--scenario", default="original")
-    diff.add_argument("--artifact", choices=["prompt", "input", "request", "response", "checks", "source"], default="request")
+    diff.add_argument("--artifact", choices=["changes", "prompt", "input", "request", "response", "checks", "source"], default="request")
     review = sub.add_parser("review"); rs = review.add_subparsers(dest="review_action", required=True)
     submit = rs.add_parser("submit"); submit.add_argument("experiment"); submit.add_argument("--file", required=True)
     text = rs.add_parser("text"); text.add_argument("experiment"); text.add_argument("review")
@@ -185,7 +188,7 @@ def main(argv=None):
                 serve(workbench, experiment_id=args.experiment, port=args.port, open_browser=not args.no_open)
                 return 0
         elif cmd == "candidate":
-            result = workbench.add_candidate(args.experiment, label=args.label, patch=read_json(args.patch), rationale=args.rationale, parent=args.parent)
+            result = workbench.add_candidate(args.experiment, label=args.label, patch=read_json(args.patch), rationale=args.rationale_file.read_text(encoding="utf-8") if args.rationale_file else args.rationale, parent=args.parent)
         elif cmd == "scenario":
             result = workbench.add_scenario(args.experiment, label=args.label, patch=read_json(args.patch), description=args.description, origin=args.origin, checks=read_json(args.checks) if args.checks else None)
         elif cmd == "run":

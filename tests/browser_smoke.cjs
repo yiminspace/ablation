@@ -42,17 +42,23 @@ async function main(){
   await page.locator('#import-form [type="submit"]').click();
   await page.locator('#experiment-title').filter({hasText:'Browser fixture'}).waitFor();
   const eid=new URL(page.url()).searchParams.get('experiment');assert(eid);
-  assert.equal(await page.locator('#comparison-settings').isVisible(),false);
-  assert.equal(await page.locator('[data-artifact="request"]').isVisible(),false);
-  await page.locator('[data-action="toggle-comparison"]').click();
+  assert.equal(await page.locator('#comparison-settings').count(),0);
+  assert.equal(await page.locator('#base-select, #candidate-select').count(),0);
+  assert.equal(await page.locator('[data-artifact="changes"]').getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('#more-evidence').count(),0);
+  assert.equal(await page.locator('.artifact-nav button').count(),2);
+  await page.locator('[data-tab="runs"]').click();
   await page.locator('[data-action="candidate"]').click();
   await page.locator('#candidate-form [name="label"]').fill('Use authorized choices');
-  await page.locator('#candidate-form [name="rationale"]').fill('Follow the user-approved requirement.');
+  await page.locator('#candidate-form [name="rationale"]').fill('Follow the user-approved requirement.\nThe backend owns this description; tool parameters stay unchanged. [Source](https://github.com/example/prompt-project/blob/0123456789abcdef0123456789abcdef01234567/src/tools.py#L30)');
   await page.locator('#candidate-form [name="patch"]').fill(JSON.stringify([{op:'replace',path:'/instructions',value:'Evaluate the authorized task.'}]));
   await page.locator('#candidate-form [type="submit"]').click();
   await page.locator('#modal').waitFor({state:'hidden'});
   await page.locator('.diff-row').first().waitFor();
   let exp=await api(`/api/experiments/${eid}`);assert.equal(exp.candidates.length,2);assert.equal(exp.runs.length,0);
+  assert.equal(await page.locator('#check-button, #code-preview').count(),0);
+  assert((await page.locator('.rationale').innerText()).includes('The backend owns this description; tool parameters stay unchanged. Source'));
+  assert.equal(await page.locator('.rationale a').getAttribute('href'),'https://github.com/example/prompt-project/blob/0123456789abcdef0123456789abcdef01234567/src/tools.py#L30');
   // Inline review, portable handoff, then real configured subprocess reply.
   await page.locator('.diff-row [data-plus]').first().click();
   await page.locator('#inline-comment').fill('Why does the accepted choice change the requirement?');
@@ -73,6 +79,7 @@ async function main(){
   assert.equal(exp.reviews[0].replies[0].comment_index,0);
   // Add assertions, then run paired requests through actual local HTTP.
   await page.locator('[data-tab="diff"]').click();
+  await page.locator('[data-tab="runs"]').click();
   await page.locator('[data-action="scenario"]').click();
   await page.locator('#scenario-form [name="label"]').fill('Synthetic paired check');
   await page.locator('#scenario-form [name="description"]').fill('Same synthetic input; assert the fixture response to verify paired scoring.');
@@ -147,7 +154,7 @@ async function main(){
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile overflow');
   const screenshots=process.env.ABLATION_SCREENSHOTS;
-  if(screenshots){fs.mkdirSync(screenshots,{recursive:true});await page.screenshot({path:path.join(screenshots,'discussion-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.locator('[data-tab="diff"]').click();await page.locator('[data-artifact="prompt"]').click();await page.screenshot({path:path.join(screenshots,'review-desktop.png'),fullPage:true});}
+  if(screenshots){fs.mkdirSync(screenshots,{recursive:true});await page.screenshot({path:path.join(screenshots,'discussion-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.locator('[data-tab="diff"]').click();await page.locator('[data-artifact="changes"]').click();await page.screenshot({path:path.join(screenshots,'review-desktop.png'),fullPage:true});}
   assert.deepEqual(pageErrors,[]);
   console.log(JSON.stringify({ok:true,experiment:eid,pairedRequests:packets.length,reviews:exp.reviews.length,agentReplies:exp.reviews[0].replies.length,checks:exp.runs.map(r=>r.passed),pageErrors}));
 }

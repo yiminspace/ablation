@@ -6,10 +6,10 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const json = value => typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   const id = () => globalThis.crypto?.randomUUID?.() || `review-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const artifacts = {prompt:'prompt.txt', input:'scenario-input.json', request:'request.json', response:'response.json', checks:'checks.json', source:'source.json'};
-  const artifactLabels = {prompt:'提示词',input:'测试输入',request:'完整请求',response:'输出结果',checks:'判断标准',source:'原始数据'};
+  const artifacts = {changes:'changes.txt',prompt:'prompt.txt', input:'scenario-input.json', request:'request.json', response:'response.json', checks:'checks.json', source:'source.json'};
+  const artifactLabels = {changes:'实际改动',prompt:'提示词',input:'测试输入',request:'完整请求',response:'输出结果',checks:'判断标准',source:'原始数据'};
   const STORE = 'ablation.workbench.drafts.v1';
-  const state = {experiment:null, experiments:[], config:{}, jobs:[], update:null, base:'baseline', candidate:'baseline', scenario:'original', artifact:'prompt', layout:'split', tab:'diff', diff:null, diffKey:'', groups:[], replyDrafts:{}, replyOpen:null, editor:null, modal:null, groupId:null, busy:false, requestSequence:0, diffSequence:0, lastJobs:'', deferred:false, whatsNew:false, expanded:false, focusBeforeModal:null, toastTimer:null};
+  const state = {experiment:null, experiments:[], config:{}, jobs:[], update:null, base:'baseline', candidate:'baseline', scenario:'original', artifact:'changes', layout:'split', tab:'diff', diff:null, diffKey:'', groups:[], replyDrafts:{}, replyOpen:null, editor:null, modal:null, groupId:null, busy:false, requestSequence:0, diffSequence:0, lastJobs:'', deferred:false, whatsNew:false, expanded:false, focusBeforeModal:null, toastTimer:null};
   let pollRunning = false;
 
   function readStorage(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
@@ -22,7 +22,7 @@
   if (saved && Array.isArray(saved.groups)) state.groups = saved.groups.filter(g => g && typeof g.id === 'string' && typeof g.experiment === 'string' && Array.isArray(g.comments));
   if (saved?.replyDrafts && typeof saved.replyDrafts === 'object') state.replyDrafts=saved.replyDrafts;
   if (saved?.editor?.anchor && typeof saved.editor.text === 'string') state.editor = saved.editor;
-  if (['split','unified'].includes(saved?.layout)) state.layout = saved.layout;
+  state.layout = 'split';
   const theme = readStorage('ablation.workbench.theme');
   if (['light','dark'].includes(theme)) document.documentElement.dataset.theme = theme;
 
@@ -70,7 +70,7 @@
       const experiment=await api(`/api/experiments/${encodeURIComponent(experimentId)}`);
       if (sequence!==state.requestSequence) return;
       state.experiment=experiment;
-      state.base='baseline'; state.candidate=experiment.candidates?.at(-1)?.id || 'baseline'; state.scenario='original'; state.diff=null; state.diffKey=''; state.expanded=false;
+      state.base='baseline'; const requestedCandidate=new URL(location.href).searchParams.get('candidate'); state.candidate=experiment.candidates?.some(c=>c.id===requestedCandidate)?requestedCandidate:experiment.candidates?.at(-1)?.id || 'baseline'; state.scenario=experiment.runs?.findLast(r=>r.candidate===state.candidate)?.scenario || 'original'; state.artifact='changes'; state.diff=null; state.diffKey=''; state.expanded=false;
       if (updateURL) { const u=new URL(location.href);u.searchParams.set('experiment',experiment.id);history.pushState({},'',u); }
       $('#empty-state').hidden=true; $('#experiment').hidden=false;
       renderExperiment(); await loadDiff();
@@ -79,24 +79,17 @@
   function renderExperiment() {
     const e=state.experiment; if(!e) return;
     const candidates=e.candidates || [], scenarios=e.scenarios || [];
-    if(!candidates.some(c => c.id===state.base)) state.base=candidates[0]?.id || 'baseline';
+    state.base='baseline';
     if(!candidates.some(c => c.id===state.candidate)) state.candidate=candidates.at(-1)?.id || state.base;
     if(!scenarios.some(s => s.id===state.scenario)) state.scenario=scenarios[0]?.id || 'original';
     document.title=`${e.title || e.id} · Ablation`;
     $('#experiment-title').textContent=e.title || '未命名实验';
-    setOptions($('#base-select'),candidates,state.base);setOptions($('#candidate-select'),candidates,state.candidate);setOptions($('#scenario-select'),scenarios.map(s => ({...s,label:`${s.label || s.id}${s.origin==='synthetic'?' · 人工构造':''}`})),state.scenario);
+
     $('#discussion-count').textContent=e.reviews?.length || 0; $('#discussion-count').hidden=!e.reviews?.length; $('#runs-count').textContent=e.runs?.length || 0;$('#runs-count').hidden=!e.runs?.length;
-    updateDraftCount(); renderScenario(); renderJobs(); renderDiscussion(); renderRuns();
+    updateDraftCount(); renderJobs(); renderDiscussion(); renderRuns();
     $$('[data-artifact]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.artifact===state.artifact)));
     $$('[data-layout]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.layout===state.layout)));
-    $('#selected-evidence').textContent=['prompt','response'].includes(state.artifact)?'':` · ${artifactLabels[state.artifact]}`;
-    $('#more-evidence').classList.toggle('selected',!['prompt','response'].includes(state.artifact));
     switchTab(state.tab);
-  }
-  function renderScenario() {
-    const scenario=currentScenario();
-    const originLabel={synthetic:'人工构造',derived:'派生场景',real:'真实记录',source:'导入原场景'}[scenario?.origin] || '来源未标注';
-    $('#scenario-context').innerHTML=`<span class="badge ${scenario?.origin==='synthetic'?'synthetic':''}">${originLabel}</span><span>${esc(scenario?.description || '未提供场景说明。')}</span>`;
   }
   function effectSummary() {
     const candidates=[...new Set([state.base,state.candidate])];
@@ -151,10 +144,23 @@
     const left=row.before!=null,right=row.after!=null;
     return `<div class="diff-row"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}<span class="line-number">${esc(row.old_line)}</span><span class="line-sign">${!row.same&&left?'−':''}</span><code>${esc(row.before)}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}<span class="line-number">${esc(row.new_line)}</span><span class="line-sign">${!row.same&&right?'+':''}</span><code>${esc(row.after)}</code></div></div>`;
   }
+  function explanationLinks(value) {
+    const text=String(value), pattern=/\[([^\]\n]+)\]\((https:\/\/github\.com\/[^)\s]+)\)/g;
+    let result='',offset=0;
+    for(const match of text.matchAll(pattern)) {
+      result+=esc(text.slice(offset,match.index));
+      try {
+        const url=new URL(match[2]);
+        result+=url.hostname==='github.com'&&!url.username&&!url.password&&/^\/[^/]+\/[^/]+\/blob\//.test(url.pathname)?`<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">${esc(match[1])}</a>`:esc(match[0]);
+      } catch {result+=esc(match[0]);}
+      offset=match.index+match[0].length;
+    }
+    return result+esc(text.slice(offset));
+  }
   function rationaleMarkup() {
     const explanation=state.artifact==='source' ? (state.experiment.source?.notes || []).join(' ') : state.artifact==='input' || state.artifact==='checks' ? currentScenario()?.description : state.diff?.rationale;
     if(!explanation) return '';
-    return `<div class="thread rationale"><div class="note"><div class="avatar">A</div><div class="bubble"><p class="comment-body"><strong>${state.artifact==='input'||state.artifact==='checks'?'场景说明':'修改原因'}：</strong>${esc(explanation)}</p></div></div></div>`;
+    return `<div class="thread rationale"><div class="note"><div class="avatar">A</div><div class="bubble"><p class="comment-body"><strong>${state.artifact==='input'||state.artifact==='checks'?'场景说明':'修改原因'}：</strong>${explanationLinks(explanation)}</p></div></div></div>`;
   }
   function pendingMarkup(group,comment) {
     return `<div class="thread"><div class="note"><div class="avatar user">你</div><div class="bubble"><div class="comment-head"><strong>你</strong><span class="badge pending">待提交</span><span class="location">${esc(locationText(comment))}</span></div><p class="comment-body">${esc(comment.text)}</p><div class="comment-actions"><button class="text-btn" data-edit-comment="${esc(comment.id)}" data-group="${esc(group.id)}">编辑</button><button class="text-btn" data-delete-comment="${esc(comment.id)}" data-group="${esc(group.id)}">删除</button></div></div></div></div>`;
@@ -194,7 +200,7 @@
     if(state.editor && matchesContext(state.editor.anchor) && state.editor.anchor.artifact===state.artifact && !display.some(row => sameAnchor(state.editor.anchor,rowWithArtifact(row)))) body+=`<div class="notice warning">${state.groups.find(g=>g.id===state.editor.groupId)?.parent_review?'追问已保存的历史评论，将保留当时的内容。':'原内容已变化，请核对新内容后重新添加评论。'}</div>${editorMarkup()}`;
     const plus=rows.filter(r => !r.same&&r.after!=null).length,minus=rows.filter(r => !r.same&&r.before!=null).length;
     $('#diff-file').classList.toggle('unified',state.layout==='unified');
-    $('#diff-file').innerHTML=`<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions"><span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span><button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">改动前 <span class="version-caption">${esc(diff.base_label || label(state.experiment.candidates,state.base))}</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">改动后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
+    $('#diff-file').innerHTML=`<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions"><span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span><button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
     const notes=(Array.isArray(diff.notes)?diff.notes:diff.notes?[diff.notes]:[]).filter(n=>!/^Scenario:/.test(objectMessage(n)));
     let status=effectSummary();
     if(state.artifact==='input'||state.artifact==='checks') {
@@ -203,7 +209,7 @@
     }
     if(notes.length)status+=`<details class="evidence-notes"><summary>查看比较说明</summary>${notes.map(n=>`<p>${esc(objectMessage(n))}</p>`).join('')}</details>`;
     if(state.artifact==='response'&&state.experiment.baseline?.response!=null)status+=`<details class="evidence-notes"><summary>查看历史响应</summary><p class="small muted">导入时记录的响应，不作为本次比较的回放结果。</p><pre class="context-snippet">${esc(json(state.experiment.baseline.response))}</pre></details>`;
-    $('#comparison-status').innerHTML=status;renderScenario();
+    $('#comparison-status').innerHTML=status;
   }
   function rowWithArtifact(row){return{...row,artifact:state.artifact};}
   function runBadge(run) {
@@ -224,9 +230,12 @@
     $('#discussion-view').innerHTML=`<div class="section-head"><h2>评论与解释</h2><button class="btn" data-action="review">提交评论</button></div><p class="section-description">评论保留审阅时的内容。回答问题只新增回复，不代表生成了新候选或重新运行。</p>${reviews.length?[...reviews].reverse().map(review=>`<article class="review-card"><div class="review-card-header"><strong>Review ${esc(review.id.slice(0,8))}</strong><span class="badge">${review.intent==='changes'?'请求修改':'追问'}</span><span class="muted">${esc(formatTime(review.created_at))}</span><span class="muted">${esc(label(state.experiment.candidates,review.base))} → ${esc(label(state.experiment.candidates,review.candidate))} · ${esc(label(state.experiment.scenarios,review.scenario))} · r${esc(review.revision)}</span></div><div class="review-card-content">${review.summary?`<p class="comment-body">${esc(review.summary)}</p>`:''}${(review.comments||[]).map((c,index)=>`<div class="discussion-item"><div class="review-location"><code>${esc(locationText(c))}</code><button class="text-btn" data-jump-review="${esc(review.id)}" data-comment-index="${index}">查看位置</button></div><div class="bubble"><div class="comment-head"><strong>你</strong></div><p class="comment-body">${esc(c.text)}</p><div class="comment-actions"><button class="text-btn" data-followup-review="${esc(review.id)}" data-comment-index="${index}">继续追问</button></div></div><details class="preview-details"><summary>审阅时的原文</summary><pre class="context-snippet">${esc('改动前：\n'+(c.before||'（无内容）')+'\n\n改动后：\n'+(c.after||'（无内容）'))}</pre></details>${repliesMarkup(review,index)}</div>`).join('')}${repliesMarkup(review)}</div><div class="review-card-footer"><button class="btn" data-copy-review="${esc(review.id)}">复制评论</button><button class="btn" data-dispatch-review="${esc(review.id)}" ${agentConfigured()?'':'disabled'}>交给 Agent</button><button class="text-btn" data-reply-review="${esc(review.id)}">追加回复</button></div><form class="thread-reply-form" data-reply-form="${esc(review.id)}" ${state.replyOpen===review.id?'':'hidden'}><textarea aria-label="回复评论" name="text" required placeholder="补充说明。保存回复不会自动运行 Agent。">${esc(state.replyDrafts[state.experiment.id+'/'+review.id] || '')}</textarea><div class="button-row"><button type="button" class="btn" data-reply-review="${esc(review.id)}">取消</button><button type="submit" class="btn primary">保存回复</button></div></form></article>`).join(''):'<div class="muted-empty">还没有已提交的 review。点击变更行旁的 ＋，先添加一条评论。</div>'}`;
   }
   function jobStatusLabel(job) { return ({queued:'已排队',pending:'待开始',starting:'启动中',running:'运行中',cancelling:'停止中',cancelled:'已取消',canceled:'已取消',completed:'执行结束',succeeded:'执行结束',failed:'执行失败',error:'执行失败',timed_out:'执行超时',interrupted:'执行中断'})[job.status] || job.status || '状态未知'; }
+  function versionHistory() {
+    return `<details class="preview-details"><summary>实验版本记录</summary>${(state.experiment.candidates || []).filter(c=>c.id!=='baseline').map(c=>`<div class="notice"><strong>${esc(c.label)}</strong><p>${esc(c.rationale)}</p><button class="text-btn" data-view-candidate="${esc(c.id)}">查看这一版改动</button></div>`).join('')}</details>`;
+  }
   function renderRuns() {
     const runs=[...(state.experiment.runs || [])].reverse(),jobs=[...experimentJobs()].reverse();
-    $('#runs-view').innerHTML=`<div class="section-head"><h2>实际运行记录</h2><button class="btn primary" data-action="run">运行比较</button></div><p class="section-description">返回结果、断言是否通过、工具是否实际执行是不同的事情。这里仅回放模型请求，不执行模型返回的工具调用。</p>${runs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>候选 / 场景</th><th>结果</th><th>请求指纹</th><th>耗时</th><th>时间</th><th>外部证据</th><th></th></tr></thead><tbody>${runs.map(run=>`<tr><td><strong>${esc(label(state.experiment.candidates,run.candidate))}</strong><br><span class="muted">${esc(label(state.experiment.scenarios,run.scenario))} · 第 ${esc(run.repeat ?? 1)} 次</span></td><td>${runBadge(run)}${run.error?`<p class="run-error">${esc(objectMessage(run.error))}</p>`:''}</td><td><code title="${esc(run.request_hash)}">${esc(run.request_hash?.slice(0,12) || '—')}</code></td><td>${run.elapsed_ms!=null?esc(Math.round(run.elapsed_ms))+' ms':'—'}</td><td>${esc(formatTime(run.created_at))}</td><td>${evidenceLinks(run) || '—'}</td><td><button class="text-btn" data-run-detail="${esc(run.id)}">详情</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="muted-empty">当前没有 replay 记录。导入日志、创建候选和发表评论均不会自动调用模型。</div>'}<div class="job-history"><h3>任务记录</h3><p class="small muted">Agent 执行结束只说明进程已结束；是否写回解释、候选或运行结果，以实验内容为准。</p>${jobs.length?jobs.map(job=>`<details class="notice"><summary>${esc(job.kind==='agent'||job.review_id?'Agent':'Replay')} · ${esc(jobStatusLabel(job))} · ${esc(formatTime(job.created_at))}</summary><div class="small muted">${esc(job.id)}${job.review_id?' · Review '+esc(job.review_id):''}</div>${job.error?`<p class="run-error">${esc(objectMessage(job.error))}</p>`:''}${job.message?`<p>${esc(job.message)}</p>`:''}${job.output||job.result||job.log_tail?`<pre class="job-log">${esc(json(job.output || job.log_tail || job.result))}</pre>`:''}${activeStatus(job.status)?`<div class="form-actions"><button class="btn danger" data-cancel-job="${esc(job.id)}">停止任务</button></div>`:''}</details>`).join(''):'<p class="small muted">暂无后台任务。</p>'}</div>`;
+    $('#runs-view').innerHTML=`<div class="section-head"><h2>实际运行记录</h2><div class="button-row"><button class="btn" data-action="candidate">新建候选</button><button class="btn" data-action="scenario">新建场景</button><button class="btn primary" data-action="run">运行比较</button></div></div><p class="section-description">返回结果、断言是否通过、工具是否实际执行是不同的事情。这里仅回放模型请求，不执行模型返回的工具调用。</p>${versionHistory()}${runs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>候选 / 场景</th><th>结果</th><th>请求指纹</th><th>耗时</th><th>时间</th><th>外部证据</th><th></th></tr></thead><tbody>${runs.map(run=>`<tr><td><strong>${esc(label(state.experiment.candidates,run.candidate))}</strong><br><span class="muted">${esc(label(state.experiment.scenarios,run.scenario))} · 第 ${esc(run.repeat ?? 1)} 次</span></td><td>${runBadge(run)}${run.error?`<p class="run-error">${esc(objectMessage(run.error))}</p>`:''}</td><td><code title="${esc(run.request_hash)}">${esc(run.request_hash?.slice(0,12) || '—')}</code></td><td>${run.elapsed_ms!=null?esc(Math.round(run.elapsed_ms))+' ms':'—'}</td><td>${esc(formatTime(run.created_at))}</td><td>${evidenceLinks(run) || '—'}</td><td><button class="text-btn" data-run-detail="${esc(run.id)}">详情</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="muted-empty">当前没有 replay 记录。导入日志、创建候选和发表评论均不会自动调用模型。</div>'}<div class="job-history"><h3>任务记录</h3><p class="small muted">Agent 执行结束只说明进程已结束；是否写回解释、候选或运行结果，以实验内容为准。</p>${jobs.length?jobs.map(job=>`<details class="notice"><summary>${esc(job.kind==='agent'||job.review_id?'Agent':'Replay')} · ${esc(jobStatusLabel(job))} · ${esc(formatTime(job.created_at))}</summary><div class="small muted">${esc(job.id)}${job.review_id?' · Review '+esc(job.review_id):''}</div>${job.error?`<p class="run-error">${esc(objectMessage(job.error))}</p>`:''}${job.message?`<p>${esc(job.message)}</p>`:''}${job.output||job.result||job.log_tail?`<pre class="job-log">${esc(json(job.output || job.log_tail || job.result))}</pre>`:''}${activeStatus(job.status)?`<div class="form-actions"><button class="btn danger" data-cancel-job="${esc(job.id)}">停止任务</button></div>`:''}</details>`).join(''):'<p class="small muted">暂无后台任务。</p>'}</div>`;
   }
   function ensureGroup(anchor, forceNew=false) {
     let group=!forceNew && state.groups.find(g => g.experiment===anchor.experiment && g.base===anchor.base && g.candidate===anchor.candidate && g.scenario===anchor.scenario && g.revision===anchor.revision && !g.saved && !g.parent_review);
@@ -283,7 +292,7 @@
   }
   function candidateModal() {
     if(!state.experiment)return;
-    openModal('candidate','新建提示词候选',`<p class="dialog-explanation">以指定候选为父版本应用 JSON Patch，保留原始请求。完整工具列表不会因为修改一处说明而被替换。</p><form id="candidate-form"><div class="form-columns"><label class="field"><span class="field-label">候选名称</span><input name="label" required maxlength="150" placeholder="例如：通用完成条件"></label><label class="field"><span class="field-label">父版本</span><select name="parent">${state.experiment.candidates.map(c=>`<option value="${esc(c.id)}" ${c.id===state.candidate?'selected':''}>${esc(c.label || c.id)}</option>`).join('')}</select></label></div><label class="field"><span class="field-label">为什么修改</span><textarea name="rationale" required maxlength="10000" placeholder="用一句话说明要修复的问题和修改的原因。"></textarea><span class="field-help">这段说明会显示在 diff 下方。</span></label><label class="field"><span class="field-label">JSON Patch</span><textarea class="code-input" name="patch" required spellcheck="false">[]</textarea><span class="field-help">例如 [{"op":"replace","path":"/tools/0/function/description","value":"新的工具说明"}]。路径以完整请求 为准。</span></label>${formError()}<div class="form-actions"><button type="button" class="btn" data-action="close-modal">取消</button><button type="submit" class="btn primary">创建候选</button></div></form>`);
+    openModal('candidate','新建提示词候选',`<p class="dialog-explanation">以指定候选为父版本应用 JSON Patch，保留原始请求。完整工具列表不会因为修改一处说明而被替换。</p><form id="candidate-form"><div class="form-columns"><label class="field"><span class="field-label">候选名称</span><input name="label" required maxlength="150" placeholder="例如：通用完成条件"></label><label class="field"><span class="field-label">父版本</span><select name="parent">${state.experiment.candidates.map(c=>`<option value="${esc(c.id)}" ${c.id===state.candidate?'selected':''}>${esc(c.label || c.id)}</option>`).join('')}</select></label></div><label class="field"><span class="field-label">修改说明</span><textarea name="rationale" required maxlength="10000" placeholder="先说明为什么改，再说明大概修改位置和影响范围；可附 GitHub 源码链接。"></textarea><span class="field-help">说明显示在 diff 下方。源码链接可写成 [位置说明](GitHub源码地址)，未确认的位置或影响请注明待确认。</span></label><label class="field"><span class="field-label">JSON Patch</span><textarea class="code-input" name="patch" required spellcheck="false">[]</textarea><span class="field-help">例如 [{"op":"replace","path":"/tools/0/function/description","value":"新的工具说明"}]。路径以完整请求 为准。</span></label>${formError()}<div class="form-actions"><button type="button" class="btn" data-action="close-modal">取消</button><button type="submit" class="btn primary">创建候选</button></div></form>`);
   }
   function scenarioModal() {
     if(!state.experiment)return;
@@ -425,8 +434,9 @@
     const action=button.dataset.action;
     try {
       if(button.dataset.selectExperiment){closeModal();await selectExperiment(button.dataset.selectExperiment);return;}
+      if(button.dataset.viewCandidate){state.candidate=button.dataset.viewCandidate;state.artifact='changes';state.scenario=state.experiment.runs?.findLast(r=>r.candidate===state.candidate)?.scenario || 'original';state.tab='diff';state.expanded=false;const url=new URL(location.href);url.searchParams.set('candidate',state.candidate);history.pushState({},'',url);renderExperiment();await loadDiff();return;}
       if(button.dataset.tab){switchTab(button.dataset.tab);return;}
-      if(button.dataset.artifact){$('#more-evidence').open=false;state.artifact=button.dataset.artifact;state.expanded=false;renderExperiment();await loadDiff();return;}
+      if(button.dataset.artifact){state.artifact=button.dataset.artifact;state.expanded=false;renderExperiment();await loadDiff();return;}
       if(button.dataset.layout){state.layout=button.dataset.layout;persist();$$('[data-layout]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));renderDiff();return;}
       if(button.hasAttribute('data-plus')){openComment(Number(button.dataset.plus));return;}
       if(button.dataset.editComment){editComment(button.dataset.group,button.dataset.editComment);return;}
@@ -448,7 +458,7 @@
         case 'review':openReview();break;
         case 'settings':await settingsModal();break;
         case 'experiment-details':experimentDetails();break;
-        case 'toggle-comparison':{const panel=$('#comparison-settings');panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden));break;}
+
         case 'updates':await updatesModal();break;
         case 'close-modal':closeModal();break;
         case 'retry-diff':await loadDiff();break;
@@ -472,7 +482,7 @@
   });
   document.addEventListener('change', async event => {
     const target=event.target;
-    if(['base-select','candidate-select','scenario-select'].includes(target.id)){state[target.id==='base-select'?'base':target.id==='candidate-select'?'candidate':'scenario']=target.value;state.expanded=false;renderExperiment();await loadDiff();}
+
     if(target.id==='review-group'){state.groupId=target.value;renderReviewModal();}
     if(target.name==='review-intent'){const group=state.groups.find(g=>g.id===state.groupId);if(group){group.intent=target.value;persist();$('#intent-description').textContent=group.intent==='changes'?'按评论创建下一版，并运行相关验证。':'只解释原因与依据，不修改或重跑。';}}
     if(target.id==='theme-select'){if(target.value==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=target.value;try{localStorage.setItem('ablation.workbench.theme',JSON.stringify(target.value));}catch{}}
@@ -496,13 +506,13 @@
           if(kind==='request'&&data.get('response')?.trim())source.response=JSON.parse(data.get('response'));
           experiment=await api('/api/import',{source,title:data.get('title')});
         }
-        state.busy=false;closeModal();await selectExperiment(experiment.id);toast('数据已导入。可以在“更多证据”中检查原始数据和完整请求。');
+        state.busy=false;closeModal();await selectExperiment(experiment.id);toast('数据已导入。左侧为原始请求，右侧为修改后的内容。');
       } else if(form.id==='candidate-form') {
         experiment=await api(endpoint('/candidates'),{label:data.get('label'),parent:data.get('parent'),rationale:data.get('rationale'),patch:parseArray(data.get('patch'),'JSON Patch')});
-        state.experiment=experiment;state.candidate=experiment.candidates.at(-1).id;state.artifact='prompt';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('候选已保存；尚未运行模型。');
+        state.experiment=experiment;state.candidate=experiment.candidates.at(-1).id;state.artifact='changes';state.tab='diff';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('候选已保存；尚未运行模型。');
       } else if(form.id==='scenario-form') {
         experiment=await api(endpoint('/scenarios'),{label:data.get('label'),description:data.get('description'),origin:'synthetic',patch:parseArray(data.get('patch'),'输入 JSON Patch'),checks:parseArray(data.get('checks'),'响应断言')});
-        state.experiment=experiment;state.scenario=experiment.scenarios.at(-1).id;state.artifact='input';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('人工构造场景已保存；尚未运行模型。');
+        state.experiment=experiment;state.scenario=experiment.scenarios.at(-1).id;state.artifact='input';state.tab='diff';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('人工构造场景已保存；尚未运行模型。');
       } else if(form.id==='run-form') {
         const repeats=Number(data.get('repeats'));if(!Number.isInteger(repeats)||repeats<1||repeats>10)throw new Error('运行次数需为 1 到 10 的整数。');
         const job=await api(endpoint('/run'),{candidates:[...new Set([state.base,state.candidate])],scenarios:[state.scenario],repeats,profile:data.get('profile')});

@@ -16,7 +16,7 @@ from .replay import endpoint_for, evaluate_checks, replay_request
 from .sources import configured_secrets, env_value, normalize_source, profile_for, redact, validate_request
 from .storage import Store, atomic_json, load_json
 
-ARTIFACTS = {"prompt", "input", "request", "response", "checks", "source"}
+ARTIFACTS = {"changes", "prompt", "input", "request", "response", "checks", "source"}
 
 
 def writable_intent() -> None:
@@ -288,7 +288,10 @@ class Workbench:
         after_request = request_for(experiment, candidate, scenario)
         base_label, candidate_label = base_item["label"], candidate_item["label"]
         notes = [f"Scenario: {scene['label']} ({scene['origin']}). {scene['description']}"]
-        if artifact == "prompt":
+        if artifact == "changes":
+            before, after = experiment["baseline"]["request"], after_request
+            base_label = "原始数据"
+        elif artifact == "prompt":
             before, after = prompt_view(before_request), prompt_view(after_request)
         elif artifact == "input":
             before = input_view(experiment["baseline"]["request"])
@@ -319,7 +322,11 @@ class Workbench:
             before, after = outputs
         else:
             before, after = before_request, after_request
-        before_text, after_text = display_json(before), display_json(after)
+        if artifact == "changes":
+            before_text = json.dumps(before, ensure_ascii=False, indent=2, allow_nan=False)
+            after_text = json.dumps(after, ensure_ascii=False, indent=2, allow_nan=False)
+        else:
+            before_text, after_text = display_json(before), display_json(after)
         return {"base_label": base_label, "candidate_label": candidate_label, "artifact": artifact, "before": before_text, "after": after_text, "rows": split_diff(before_text, after_text), "rationale": candidate_item["rationale"], "notes": notes}
 
     def submit_review(self, experiment_id: str, review: dict) -> dict:

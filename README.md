@@ -68,7 +68,7 @@ Remote imports require an explicit `--source-base-url`. Supply a full JSON URL o
 
 ## Change, replay, compare
 
-Candidates are immutable JSON patches with a rationale. Scenarios independently describe changed inputs and their expected behavior. Every candidate is derived from the fixed source; prior model responses never become the next baseline automatically.
+Candidates are immutable JSON patches with a rationale. Keep the explanation concise: why the change helps, then where it belongs and what it affects. Add verified GitHub source links using Markdown; identify unconfirmed locations or origins explicitly. Scenarios independently describe changed inputs and their expected behavior. Every candidate is derived from the fixed source; prior model responses never become the next baseline automatically.
 
 ```json
 [
@@ -80,7 +80,7 @@ Candidates are immutable JSON patches with a rationale. Scenarios independently 
 ]
 ```
 
-Save that as `candidate.json`, then:
+Save that as `candidate.json`. Pass explanation text with `--rationale`, or use `--rationale-file rationale.md` to preserve multiline UTF-8 text and source links. Both store the same rationale displayed below the GUI diff. Then:
 
 ```sh
 ablation --workspace ./experiments candidate EXPERIMENT_ID \
@@ -97,7 +97,7 @@ ablation --workspace ./experiments diff EXPERIMENT_ID \
 
 The GUI offers the same candidate/scenario creation and replay controls. Runs save the actual request, response, request hash, timing and assertion results. Compare prompt, scenario input, full request, response, checks, and source reconstruction. HTTP failures are separate from failed assertions. A run without checks is **unscored**, not passing. Repetition counts are not independent scenario counts or statistical reliability claims.
 
-The initial view focuses on prompt changes and their rationale. Open **比较设置** for candidate/scenario creation and layout controls, or **更多证据** for inputs, source data, full requests, and checks.
+The initial view fixes the imported original request on the left and shows the modified request on the right. Both sides retain the original JSON structure and field order. Instructions, tool descriptions, and input-message changes appear together, with unchanged context collapsed. Older versions and candidate/scenario creation live in **运行记录**. The main view contains only actual changes and model outputs.
 
 The summary counts historical runs for the selected versions and scenario, so a later passing replay does not hide earlier failures. The response diff shows the latest completed outputs; inspect individual runs for earlier evidence.
 
