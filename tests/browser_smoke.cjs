@@ -103,7 +103,7 @@ async function main(){
   await page.locator('#modal a').first().waitFor();
   await page.keyboard.press('Escape');
   await page.locator('[data-tab="diff"]').click();
-  await page.locator('[data-artifact="response"]').click();
+  await page.locator('.artifact-nav [data-artifact="response"]').click();
   await page.getByText('fixture candidate',{exact:false}).first().waitFor();
   // Save a response comment, then replay again with both versions passing.
   await page.locator('.diff-cell.add [data-plus]').first().click();
@@ -146,6 +146,23 @@ async function main(){
   assert.deepEqual(followup.parent_review,{id:historicalReview.id,comment_index:0});
   assert.deepEqual(followup.snapshot,historicalReview.snapshot);
   for(const key of ['artifact','old_line','new_line','before','after'])assert.equal(followup.comments[0][key],historicalReview.comments[0][key]);
+  await page.getByRole('button',{name:'完成',exact:true}).click();
+  // Existing candidate-to-candidate reviews keep their original anchors with a fixed baseline UI.
+  const legacyBase=exp.candidates[1].id;
+  const legacyDiff=await api(`/api/experiments/${eid}/diff?base=${legacyBase}&candidate=baseline&artifact=prompt`);
+  const legacyRow=legacyDiff.rows.find(row=>row.kind!=='equal');
+  const legacy=await api(`/api/experiments/${eid}/reviews`,{base:legacyBase,candidate:'baseline',scenario:'original',comments:[{...legacyRow,artifact:'prompt',text:'Review captured between two old versions.'}]});
+  await page.reload();await page.locator('#experiment-title').waitFor();
+  await page.locator('[data-tab="discussion"]').click();
+  await page.locator(`#discussion-view [data-followup-review="${legacy.id}"]`).click();
+  await page.locator('#inline-comment').fill('Continue discussing the original comparison.');
+  await page.locator('[data-action="add-comment"]').click();
+  await page.locator('[data-action="review"]').first().click();
+  await page.locator('[data-action="copy-pending"]').click();
+  await page.locator('#portable-review').waitFor();
+  exp=await api(`/api/experiments/${eid}`);
+  assert.equal(exp.reviews.at(-1).base,legacyBase);
+  assert.deepEqual(exp.reviews.at(-1).snapshot,legacy.snapshot);
   await page.getByRole('button',{name:'完成',exact:true}).click();
   // Persistence after reload, responsive layout and literal rendering.
   await page.reload();await page.locator('#experiment-title').waitFor();

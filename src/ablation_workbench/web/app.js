@@ -40,7 +40,7 @@
   const label = (collection, value) => (collection || []).find(item => item.id === value)?.label || value;
   const objectMessage = value => typeof value === 'string' ? value : value?.message || (value ? json(value) : '');
   const currentScenario = () => state.experiment?.scenarios?.find(s => s.id === state.scenario);
-  const matchesContext = a => a.experiment === state.experiment?.id && a.base === state.base && a.candidate === state.candidate && a.scenario === state.scenario;
+  const matchesContext = a => a.experiment === state.experiment?.id && a.candidate === state.candidate && a.scenario === state.scenario && (a.base === state.base || Boolean(a.parent_review) || (a === state.editor?.anchor && Boolean(state.groups.find(g => g.id === state.editor.groupId)?.parent_review)));
   const currentGroups = () => state.groups.filter(g => g.experiment === state.experiment?.id);
   const activeStatus = status => ['queued','pending','running','starting','cancelling'].includes(status);
   const experimentJobs = () => state.jobs.filter(j => [j.experiment_id,j.experiment,j.experimentId].includes(state.experiment?.id));
@@ -512,7 +512,7 @@
         state.experiment=experiment;state.candidate=experiment.candidates.at(-1).id;state.artifact='changes';state.tab='diff';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('候选已保存；尚未运行模型。');
       } else if(form.id==='scenario-form') {
         experiment=await api(endpoint('/scenarios'),{label:data.get('label'),description:data.get('description'),origin:'synthetic',patch:parseArray(data.get('patch'),'输入 JSON Patch'),checks:parseArray(data.get('checks'),'响应断言')});
-        state.experiment=experiment;state.scenario=experiment.scenarios.at(-1).id;state.artifact='input';state.tab='diff';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('人工构造场景已保存；尚未运行模型。');
+        state.experiment=experiment;state.scenario=experiment.scenarios.at(-1).id;state.artifact='changes';state.tab='diff';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('人工构造场景已保存；尚未运行模型。');
       } else if(form.id==='run-form') {
         const repeats=Number(data.get('repeats'));if(!Number.isInteger(repeats)||repeats<1||repeats>10)throw new Error('运行次数需为 1 到 10 的整数。');
         const job=await api(endpoint('/run'),{candidates:[...new Set([state.base,state.candidate])],scenarios:[state.scenario],repeats,profile:data.get('profile')});
