@@ -230,6 +230,27 @@ async function main(){
   await page.locator('.requirement-group').getByText('分组评论保留原文定位。',{exact:true}).waitFor();
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Requirement view mobile overflow');
+  // Pre-upgrade JSON drafts stay submittable and saved locations use their snapshot.
+  const oldDiff=await api(`/api/experiments/${eid}/diff?candidate=${groupedCandidate}&artifact=changes&format=legacy`);
+  const oldRow=oldDiff.rows.find(row=>row.kind!=='equal');
+  const oldReview=await api(`/api/experiments/${eid}/reviews`,{candidate:groupedCandidate,comments:[{...oldRow,artifact:'changes',text:'旧版 JSON 评论位置'}]});
+  await page.reload();
+  await page.locator('#experiment-title').waitFor();
+  await page.locator('[data-tab="discussion"]').click();
+  await page.locator(`[data-jump-review="${oldReview.id}"]`).click();
+  await page.locator('.diff-row').first().waitFor();
+  await page.locator('#diff-file').getByText('旧版 JSON 评论位置',{exact:true}).waitFor();
+  assert((await page.locator('#diff-file').innerText()).includes('"instructions"'));
+  // More than 500 context rows must not hide later ungrouped changes.
+  const longText=Array.from({length:1200},(_,i)=>`original line ${i}`).join('\n');
+  const longAfter=Array.from({length:1200},(_,i)=>i===0?'grouped first change':i%2===0?`ungrouped line ${i}`:`original line ${i}`).join('\n');
+  const big=await api('/api/import',{source:{kind:'request',data:{model:'fixture-model',instructions:longText,input:[]}},title:'Long grouped diff'});
+  const bigCandidate=(await api(`/api/experiments/${big.id}/candidates`,{label:'Long edits',patch:[{op:'replace',path:'/instructions',value:longAfter}],rationale:'长文本分组'})).candidates.at(-1).id;
+  await api(`/api/experiments/${big.id}/change-groups`,{candidate:bigCandidate,groups:[{id:'first',title:'首处改动',reason:'保留其他未分组改动。',effect:'后续改动可见。',matches:['grouped first change'],sources:[]}]});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.goto(url+`?experiment=${big.id}&candidate=${bigCandidate}`);
+  await page.locator('[data-grouping="requirements"]').click();
+  await page.locator('.requirement-group').getByText('ungrouped line 1198',{exact:false}).waitFor();
   assert.deepEqual(pageErrors,[]);
   console.log(JSON.stringify({ok:true,experiment:eid,pairedRequests:packets.length,reviews:exp.reviews.length,agentReplies:exp.reviews[0].replies.length,checks:exp.runs.map(r=>r.passed),pageErrors}));
 }

@@ -357,10 +357,12 @@ class Workbench:
                         break
             return self.get(experiment_id)
 
-    def compare(self, experiment_id: str, *, base: str = "baseline", candidate: str = "baseline", scenario: str = "original", artifact: str = "request") -> dict:
-        return self._compare(self.get(experiment_id), base=base, candidate=candidate, scenario=scenario, artifact=artifact)
+    def compare(self, experiment_id: str, *, base: str = "baseline", candidate: str = "baseline", scenario: str = "original", artifact: str = "request", format: str = "readable") -> dict:
+        return self._compare(self.get(experiment_id), base=base, candidate=candidate, scenario=scenario, artifact=artifact, format=format)
 
-    def _compare(self, experiment: dict, *, base: str, candidate: str, scenario: str, artifact: str) -> dict:
+    def _compare(self, experiment: dict, *, base: str, candidate: str, scenario: str, artifact: str, format: str = "readable") -> dict:
+        if format not in {"readable", "legacy"}:
+            raise ValueError("Unknown diff format")
         if artifact not in ARTIFACTS:
             raise ValueError("Unknown comparison artifact")
         base_item = find_item(experiment["candidates"], base, "candidate")
@@ -374,6 +376,8 @@ class Workbench:
             before = prompt_view(experiment["baseline"]["request"])
             after = prompt_view(request_for(experiment, candidate, "original"))
             base_label = "原始提示词"
+            if format == "legacy":
+                before, after = experiment["baseline"]["request"], after_request
         elif artifact == "prompt":
             before, after = prompt_view(before_request), prompt_view(after_request)
         elif artifact == "input":
@@ -405,11 +409,15 @@ class Workbench:
             before, after = outputs
         else:
             before, after = before_request, after_request
-        if artifact in {"changes", "prompt"}:
+        if artifact in {"changes", "prompt"} and format == "readable":
             before_text, after_text = readable_request(before), readable_request(after)
+        elif artifact == "changes" and format == "legacy":
+            before_text = json.dumps(before, ensure_ascii=False, indent=2, allow_nan=False)
+            after_text = json.dumps(after, ensure_ascii=False, indent=2, allow_nan=False)
         else:
             before_text, after_text = display_json(before), display_json(after)
-        return {"base_label": base_label, "candidate_label": candidate_label, "artifact": artifact, "before": before_text, "after": after_text, "rows": split_diff(before_text, after_text), "rationale": candidate_item["rationale"], "notes": notes, "change_groups": group_diff_rows(split_diff(before_text, after_text), candidate_item.get("change_groups", [])) if artifact in {"changes", "prompt"} and base == "baseline" else []}
+        rows = split_diff(before_text, after_text)
+        return {"base_label": base_label, "candidate_label": candidate_label, "artifact": artifact, "before": before_text, "after": after_text, "rows": rows, "rationale": candidate_item["rationale"], "notes": notes, "change_groups": group_diff_rows(rows, candidate_item.get("change_groups", [])) if artifact in {"changes", "prompt"} and base == "baseline" and format == "readable" else []}
 
     def submit_review(self, experiment_id: str, review: dict) -> dict:
         if not isinstance(review, dict):
@@ -451,15 +459,21 @@ class Workbench:
                 artifact = comment.get("artifact", "request")
                 if artifact == "response" and any(run.get("recorded_revision", 0) > payload["revision"] and run["candidate"] in {payload["base"], payload["candidate"]} and run["scenario"] == payload["scenario"] for run in experiment["runs"]):
                     raise ValueError("Response changed after this review draft; refresh and review the new response before submitting")
-                comparison = self._compare(experiment, base=payload["base"], candidate=payload["candidate"], scenario=payload["scenario"], artifact=artifact)
-                snapshots[artifact] = comparison
+                comparison = snapshots.get(artifact) or self._compare(experiment, base=payload["base"], candidate=payload["candidate"], scenario=payload["scenario"], artifact=artifact)
                 old_line, new_line = comment.get("old_line"), comment.get("new_line")
                 if old_line is not None or new_line is not None:
                     if any(line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 1) for line in (old_line, new_line)):
                         raise ValueError("Comment line numbers must be positive integers")
                     row = next((row for row in comparison["rows"] if row["old_line"] == old_line and row["new_line"] == new_line), None)
                     if row is None or any(key in comment and comment[key] != row[key] for key in ("before", "after")):
-                        raise ValueError("Comment anchor is stale or does not match this diff; refresh and review the exact content")
+                        if artifact in {"changes", "prompt"} and artifact not in snapshots:
+                            legacy = self._compare(experiment, base=payload["base"], candidate=payload["candidate"], scenario=payload["scenario"], artifact=artifact, format="legacy")
+                            legacy_row = next((item for item in legacy["rows"] if item["old_line"] == old_line and item["new_line"] == new_line and all(key not in comment or comment[key] == item[key] for key in ("before", "after"))), None)
+                            if legacy_row is not None:
+                                comparison, row = legacy, legacy_row
+                        if row is None or any(key in comment and comment[key] != row[key] for key in ("before", "after")):
+                            raise ValueError("Comment anchor is stale or does not match this diff; refresh and review the exact content")
+                snapshots[artifact] = comparison
             snapshot = copy.deepcopy(parent["snapshot"]) if parent else {"baseline_hash": experiment["baseline"]["hash"], "request_hash": digest(request), "captured_revision": experiment["revision"], "diffs": snapshots}
             persisted = dict(payload, created_at=timestamp(), replies=[], submission_hash=digest(payload), snapshot=snapshot)
             experiment["reviews"].append(persisted)
@@ -612,6 +626,9 @@ class Workbench:
             request = request_for(experiment, item["id"])
             require(redact(request) == request, "candidate introduces sensitive request fields")
             validate_patch_credentials(baseline["request"], candidate_patch(experiment, item["id"]), [])
+            if item.get("change_groups"):
+                comparison = self._compare(experiment, base="baseline", candidate=item["id"], scenario="original", artifact="changes")
+                require(all(group["row_indices"] for group in comparison["change_groups"]), "unmatched requirement group")
         for scene in experiment["scenarios"]:
             for key in ("label", "description", "origin"):
                 text(scene.get(key), "scenario " + key)

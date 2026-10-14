@@ -96,6 +96,30 @@ class EngineTests(EngineFixture):
         with self.assertRaises(ValueError):
             self.workbench.set_change_groups(self.id, candidate=candidate, groups=[group, {**group, "id": "other"}])
 
+    def test_pre_upgrade_drafts_retain_legacy_json_snapshots(self):
+        candidate = self.add_candidate()
+        for artifact in ("changes", "prompt"):
+            old = self.workbench.compare(self.id, candidate=candidate, artifact=artifact, format="legacy")
+            row = next(row for row in old["rows"] if row["kind"] != "equal")
+            review = self.workbench.submit_review(self.id, {"candidate": candidate, "comments": [dict(row, artifact=artifact, text="旧版草稿")]})
+            self.assertEqual(review["snapshot"]["diffs"][artifact]["rows"], old["rows"])
+            self.assertEqual(review["snapshot"]["diffs"][artifact]["before"], old["before"])
+            self.assertNotEqual(self.workbench.compare(self.id, candidate=candidate, artifact=artifact)["before"], old["before"])
+
+    def test_bundle_import_rejects_overlapping_and_unmatched_groups_before_save(self):
+        candidate = self.add_candidate()
+        path = self.workbench.export_bundle(self.id, Path(self.temp.name) / "groups.json")
+        original = json.loads(path.read_text())
+        group = {"id": "one", "title": "判定", "reason": "原因", "effect": "效果", "matches": ["observed evidence"], "sources": []}
+        for groups in ([group, {**group, "id": "two"}], [{**group, "matches": ["missing anchor"]}]):
+            data = copy.deepcopy(original)
+            data["experiment"]["candidates"][-1]["change_groups"] = groups
+            path.write_text(json.dumps(data))
+            before = self.workbench.list_experiments()
+            with self.assertRaises(ValueError):
+                self.workbench.import_bundle(path)
+            self.assertEqual(before, self.workbench.list_experiments())
+
     def test_immutable_baseline_and_full_tools_array(self):
         candidate = self.add_candidate()
         experiment = self.workbench.get(self.id)

@@ -215,7 +215,7 @@ def make_server(workbench, port=0):
                     eid, action = match.groups()
                     if not action: result = workbench.get(eid)
                     elif action == "diff":
-                        result = workbench.compare(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact")})
+                        result = workbench.compare(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact", "format")})
                     elif action == "export":
                         with tempfile.TemporaryDirectory() as directory:
                             target = Path(directory) / "experiment.json"
