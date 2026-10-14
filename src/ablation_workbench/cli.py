@@ -101,6 +101,9 @@ def parser():
     rationale.add_argument("--rationale", help="Why the change helps, then verified source location and impact; supports GitHub Markdown links")
     rationale.add_argument("--rationale-file", type=Path, help="UTF-8 file containing the same explanation, including newlines and source links")
     candidate.add_argument("--parent", default="baseline")
+    groups = sub.add_parser("change-groups", help="Set review annotations without changing requests or replay evidence")
+    groups.add_argument("experiment"); groups.add_argument("--candidate", required=True)
+    groups.add_argument("--file", required=True, help="JSON requirement groups with Chinese reasons and GitHub source links")
     scenario = sub.add_parser("scenario", help="Create an immutable test input and explicit checks")
     scenario.add_argument("experiment"); scenario.add_argument("--label", required=True)
     scenario.add_argument("--patch", required=True); scenario.add_argument("--description", required=True)
@@ -189,6 +192,8 @@ def main(argv=None):
                 return 0
         elif cmd == "candidate":
             result = workbench.add_candidate(args.experiment, label=args.label, patch=read_json(args.patch), rationale=args.rationale_file.read_text(encoding="utf-8") if args.rationale_file else args.rationale, parent=args.parent)
+        elif cmd == "change-groups":
+            result = workbench.set_change_groups(args.experiment, candidate=args.candidate, groups=read_json(args.file))
         elif cmd == "scenario":
             result = workbench.add_scenario(args.experiment, label=args.label, patch=read_json(args.patch), description=args.description, origin=args.origin, checks=read_json(args.checks) if args.checks else None)
         elif cmd == "run":

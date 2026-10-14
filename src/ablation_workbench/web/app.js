@@ -7,14 +7,14 @@
   const json = value => typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   const id = () => globalThis.crypto?.randomUUID?.() || `review-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const artifacts = {changes:'changes.txt',prompt:'prompt.txt', input:'scenario-input.json', request:'request.json', response:'response.json', checks:'checks.json', source:'source.json'};
-  const artifactLabels = {changes:'实际改动',prompt:'提示词',input:'测试输入',request:'完整请求',response:'输出结果',checks:'判断标准',source:'原始数据'};
+  const artifactLabels = {changes:'提示词改动',prompt:'提示词',input:'测试输入',request:'完整请求',response:'输出结果',checks:'判断标准',source:'原始数据'};
   const STORE = 'ablation.workbench.drafts.v1';
-  const state = {experiment:null, experiments:[], config:{}, jobs:[], update:null, base:'baseline', candidate:'baseline', scenario:'original', artifact:'changes', layout:'split', tab:'diff', diff:null, diffKey:'', groups:[], replyDrafts:{}, replyOpen:null, editor:null, modal:null, groupId:null, busy:false, requestSequence:0, diffSequence:0, lastJobs:'', deferred:false, whatsNew:false, expanded:false, focusBeforeModal:null, toastTimer:null};
+  const state = {experiment:null, experiments:[], config:{}, jobs:[], update:null, base:'baseline', candidate:'baseline', scenario:'original', artifact:'changes', layout:'split', grouping:'requirements', tab:'diff', diff:null, diffKey:'', groups:[], replyDrafts:{}, replyOpen:null, editor:null, modal:null, groupId:null, busy:false, requestSequence:0, diffSequence:0, lastJobs:'', deferred:false, whatsNew:false, expanded:false, focusBeforeModal:null, toastTimer:null};
   let pollRunning = false;
 
   function readStorage(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
   function persist() {
-    try { localStorage.setItem(STORE, JSON.stringify({groups:state.groups, replyDrafts:state.replyDrafts, editor:state.editor, layout:state.layout})); }
+    try { localStorage.setItem(STORE, JSON.stringify({groups:state.groups, replyDrafts:state.replyDrafts, editor:state.editor, layout:state.layout, grouping:state.grouping})); }
     catch { $('#draft-storage-status').textContent = '浏览器存储不可用；请在关闭前提交或复制草稿'; }
     updateDraftCount();
   }
@@ -23,6 +23,7 @@
   if (saved?.replyDrafts && typeof saved.replyDrafts === 'object') state.replyDrafts=saved.replyDrafts;
   if (saved?.editor?.anchor && typeof saved.editor.text === 'string') state.editor = saved.editor;
   state.layout = 'split';
+  if(['requirements','original'].includes(saved?.grouping))state.grouping=saved.grouping;
   const theme = readStorage('ablation.workbench.theme');
   if (['light','dark'].includes(theme)) document.documentElement.dataset.theme = theme;
 
@@ -139,10 +140,34 @@
   function makeAnchor(row) { return {experiment:state.experiment.id,revision:state.experiment.revision,base:state.base,candidate:state.candidate,scenario:state.scenario,artifact:state.artifact,old_line:row.old_line,new_line:row.new_line,before:row.before,after:row.after}; }
   const sameAnchor = (a,b) => a.artifact===b.artifact && a.old_line===b.old_line && a.new_line===b.new_line && (a.before ?? '')===(b.before ?? '') && (a.after ?? '')===(b.after ?? '');
   const locationText = c => `${artifactLabels[c.artifact] || c.artifact} · ${c.new_line!=null?'改动后第 '+c.new_line+' 行':'改动前第 '+c.old_line+' 行'}`;
+  function inlineChanges(before, after) {
+    const tokens = text => String(text ?? '').match(/\s+|[\p{L}\p{N}_]+|[^\s]/gu) || [];
+    const left=tokens(before),right=tokens(after);
+    const render=(values,changed) => values.map((value,i)=>changed.has(i)?`<mark class="inline-change">${esc(value)}</mark>`:esc(value)).join('');
+    const oldChanges=new Set(),newChanges=new Set();
+    if(left.length*right.length>200000) {
+      let start=0,end=0;
+      while(start<Math.min(left.length,right.length)&&left[start]===right[start])start++;
+      while(end<Math.min(left.length,right.length)-start&&left[left.length-end-1]===right[right.length-end-1])end++;
+      for(let i=start;i<left.length-end;i++)oldChanges.add(i);
+      for(let i=start;i<right.length-end;i++)newChanges.add(i);
+    } else {
+      const table=Array.from({length:left.length+1},()=>new Uint32Array(right.length+1));
+      for(let i=left.length-1;i>=0;i--)for(let j=right.length-1;j>=0;j--)table[i][j]=left[i]===right[j]?table[i+1][j+1]+1:Math.max(table[i+1][j],table[i][j+1]);
+      let i=0,j=0;
+      while(i<left.length||j<right.length) {
+        if(i<left.length&&j<right.length&&left[i]===right[j]){i++;j++;}
+        else if(i<left.length&&(j===right.length||table[i+1][j]>=table[i][j+1]))oldChanges.add(i++);
+        else newChanges.add(j++);
+      }
+    }
+    return [render(left,oldChanges),render(right,newChanges)];
+  }
   function rowMarkup(row) {
     const plus=`<button type="button" class="line-plus" data-plus="${row.index}" aria-label="在${esc(row.new_line!=null?'新版第 '+row.new_line+' 行':'旧版第 '+row.old_line+' 行')}添加评论">+</button>`;
     const left=row.before!=null,right=row.after!=null;
-    return `<div class="diff-row"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}<span class="line-number">${esc(row.old_line)}</span><span class="line-sign">${!row.same&&left?'−':''}</span><code>${esc(row.before)}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}<span class="line-number">${esc(row.new_line)}</span><span class="line-sign">${!row.same&&right?'+':''}</span><code>${esc(row.after)}</code></div></div>`;
+    const [beforeHtml,afterHtml]=row.same?[esc(row.before),esc(row.after)]:inlineChanges(row.before,row.after);
+    return `<div class="diff-row"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}<span class="line-number">${esc(row.old_line)}</span><span class="line-sign">${!row.same&&left?'−':''}</span><code>${beforeHtml}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}<span class="line-number">${esc(row.new_line)}</span><span class="line-sign">${!row.same&&right?'+':''}</span><code>${afterHtml}</code></div></div>`;
   }
   function explanationLinks(value) {
     const text=String(value), pattern=/\[([^\]\n]+)\]\((https:\/\/github\.com\/[^)\s]+)\)/g;
@@ -157,7 +182,9 @@
     }
     return result+esc(text.slice(offset));
   }
-  function rationaleMarkup() {
+  function rationaleMarkup(row=null) {
+    const requirement=row ? (state.diff?.change_groups || []).find(group=>group.row_indices.includes(row.index)) : null;
+    if(requirement) return `<div class="thread rationale"><div class="note"><div class="avatar">A</div><div class="bubble"><p><strong>${esc(requirement.title)} · 修改原因：</strong>${esc(requirement.reason)}</p><p><strong>预期效果：</strong>${esc(requirement.effect)}</p><p>${requirement.sources.map(source=>`<a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">${esc(source.label)} ↗</a>`).join(' · ')}</p></div></div></div>`;
     const explanation=state.artifact==='source' ? (state.experiment.source?.notes || []).join(' ') : state.artifact==='input' || state.artifact==='checks' ? currentScenario()?.description : state.diff?.rationale;
     if(!explanation) return '';
     return `<div class="thread rationale"><div class="note"><div class="avatar">A</div><div class="bubble"><p class="comment-body"><strong>${state.artifact==='input'||state.artifact==='checks'?'场景说明':'修改原因'}：</strong>${explanationLinks(explanation)}</p></div></div></div>`;
@@ -185,14 +212,47 @@
     for(let i=0;i<rows.length;i++)if(!rows[i].same||anchorComments.some(c=>sameAnchor(c,rowWithArtifact(rows[i]))))for(let j=Math.max(0,i-3);j<=Math.min(rows.length-1,i+3);j++)contextLines.add(j);
     if(!contextLines.size)for(let i=0;i<Math.min(rows.length,20);i++)contextLines.add(i);
     const display=state.expanded?rows:rows.filter((_,i)=>contextLines.has(i)).slice(0,500);
-    let body='',groupOpen=false,rationaleShown=false,lastIndex=-1;
+    function renderRowSet(display, showRationale) {
+      let body='',groupOpen=false,rationaleShown=false,lastIndex=-1;
     for(let n=0;n<display.length;n++) {
-      const row=display[n];if(row.index>lastIndex+1)body+=`<div class="diff-more"><button class="text-btn" data-action="expand-diff">显示 ${row.index-lastIndex-1} 行上下文</button></div>`;body+=rowMarkup(row);lastIndex=row.index;
+      const row=display[n];if(showRationale&&row.index>lastIndex+1)body+=`<div class="diff-more"><button class="text-btn" data-action="expand-diff">显示 ${row.index-lastIndex-1} 行上下文</button></div>`;body+=rowMarkup(row);lastIndex=row.index;
       if(!row.same) groupOpen=true;
-      if(groupOpen && (n===display.length-1 || display[n+1].same)) { if(!rationaleShown){body+=rationaleMarkup();rationaleShown=true;}groupOpen=false; }
+      if(groupOpen && (n===display.length-1 || display[n+1].same)) { if(showRationale&&(!rationaleShown||(diff.change_groups || []).some(group=>group.row_indices.includes(row.index)))){body+=rationaleMarkup(row);rationaleShown=true;}groupOpen=false; }
       for(const group of currentGroups().filter(matchesContext)) for(const comment of group.comments) if(sameAnchor(comment,rowWithArtifact(row))) body+=pendingMarkup(group,comment);
       for(const review of state.experiment.reviews || []) if(review.base===state.base&&review.candidate===state.candidate&&review.scenario===state.scenario) (review.comments || []).forEach((comment,index) => {if(sameAnchor(comment,rowWithArtifact(row)))body+=savedCommentMarkup(review,comment,index);});
       if(state.editor && matchesContext(state.editor.anchor) && sameAnchor(state.editor.anchor,rowWithArtifact(row))) body+=editorMarkup();
+    }
+      return {body,lastIndex};
+    }
+    let {body,lastIndex}=renderRowSet(display, true);
+    const requirementGroups=(diff.change_groups || []).filter(group=>group.row_indices.length);
+    const grouped=['changes','prompt'].includes(state.artifact)&&state.grouping==='requirements'&&requirementGroups.length;
+    if(grouped) {
+      const assigned=new Set();
+      const owners=new Map();
+      rows.forEach(row=>{
+        let nearest=null,distance=Infinity;
+        requirementGroups.forEach(group=>{
+          const current=Math.min(...group.row_indices.map(index=>Math.abs(index-row.index)));
+          if(current<distance){distance=current;nearest=group.id;}
+        });
+        if(distance<=3)owners.set(row.index,nearest);
+      });
+      body=requirementGroups.map(group=>{
+        const selected=new Set();
+        for(const index of group.row_indices)for(let i=Math.max(0,index-3);i<=Math.min(rows.length-1,index+3);i++)if(owners.get(i)===group.id)selected.add(i);
+        for(const comment of anchorComments) {
+          const index=rows.findIndex(row=>sameAnchor(comment,rowWithArtifact(row)));
+          if(index>=0&&selected.has(index))selected.add(index);
+        }
+        const subset=rows.filter(row=>selected.has(row.index));
+        subset.forEach(row=>assigned.add(row.index));
+        const links=group.sources.map(source=>`<a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">${esc(source.label)} ↗</a>`).join(' · ');
+        return `<section class="requirement-group"><div class="requirement-heading"><h3>${esc(group.title)}</h3><span class="muted">${group.row_indices.length} 行变动</span></div><div class="requirement-reason"><p><strong>修改原因：</strong>${esc(group.reason)}</p><p><strong>预期效果：</strong>${esc(group.effect)}</p>${links?`<p class="requirement-sources">${links}</p>`:''}</div>${renderRowSet(subset,false).body}</section>`;
+      }).join('');
+      const remaining=display.filter(row=>!assigned.has(row.index));
+      if(remaining.some(row=>!row.same)||remaining.some(row=>anchorComments.some(comment=>sameAnchor(comment,rowWithArtifact(row)))))body+=`<section class="requirement-group"><h3>其他改动与评论</h3>${renderRowSet(remaining,false).body}</section>`;
+      lastIndex=rows.length-1;
     }
     if(!rows.length) body='<div class="file-empty">没有可显示的内容。响应需要先运行，未评分的结果不会标记为通过。</div>';
     if(lastIndex<rows.length-1) body+=`<div class="diff-more"><button class="text-btn" data-action="expand-diff">显示剩余 ${rows.length-lastIndex-1} 行</button></div>`;
@@ -200,16 +260,18 @@
     if(state.editor && matchesContext(state.editor.anchor) && state.editor.anchor.artifact===state.artifact && !display.some(row => sameAnchor(state.editor.anchor,rowWithArtifact(row)))) body+=`<div class="notice warning">${state.groups.find(g=>g.id===state.editor.groupId)?.parent_review?'追问已保存的历史评论，将保留当时的内容。':'原内容已变化，请核对新内容后重新添加评论。'}</div>${editorMarkup()}`;
     const plus=rows.filter(r => !r.same&&r.after!=null).length,minus=rows.filter(r => !r.same&&r.before!=null).length;
     $('#diff-file').classList.toggle('unified',state.layout==='unified');
-    $('#diff-file').innerHTML=`<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions"><span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span><button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
+    $('#diff-file').innerHTML=`<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions">${['changes','prompt'].includes(state.artifact)?`<div class="view-grouping" role="group" aria-label="改动组织方式"><button class="text-btn" data-grouping="requirements" aria-pressed="${state.grouping==='requirements'}">按需求变动</button><button class="text-btn" data-grouping="original" aria-pressed="${state.grouping==='original'}">按原文</button></div>`:''}<span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span>${['changes','prompt'].includes(state.artifact)?'<button class="text-btn" data-artifact="request">完整 JSON</button>':''}<button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
     const notes=(Array.isArray(diff.notes)?diff.notes:diff.notes?[diff.notes]:[]).filter(n=>!/^Scenario:/.test(objectMessage(n)));
-    let status=effectSummary();
+    const promptDiff=['changes','prompt'].includes(state.artifact);
+    let status=promptDiff?'':effectSummary();
     if(state.artifact==='input'||state.artifact==='checks') {
       const scenario=currentScenario();
       status=`<div class="effect-summary"><span class="badge ${scenario?.origin==='synthetic'?'synthetic':''}">${scenario?.origin==='synthetic'?'人工构造':'导入原场景'}</span><span>${esc(scenario?.label || state.scenario)}</span>${rows.length&&rows.every(row=>row.same)?'<span class="muted">与原始内容一致</span>':''}</div>`;
     }
-    if(notes.length)status+=`<details class="evidence-notes"><summary>查看比较说明</summary>${notes.map(n=>`<p>${esc(objectMessage(n))}</p>`).join('')}</details>`;
+    if(notes.length&&!promptDiff)status+=`<details class="evidence-notes"><summary>查看比较说明</summary>${notes.map(n=>`<p>${esc(objectMessage(n))}</p>`).join('')}</details>`;
     if(state.artifact==='response'&&state.experiment.baseline?.response!=null)status+=`<details class="evidence-notes"><summary>查看历史响应</summary><p class="small muted">导入时记录的响应，不作为本次比较的回放结果。</p><pre class="context-snippet">${esc(json(state.experiment.baseline.response))}</pre></details>`;
     $('#comparison-status').innerHTML=status;
+    $('#comparison-status').hidden=!status;
   }
   function rowWithArtifact(row){return{...row,artifact:state.artifact};}
   function runBadge(run) {
@@ -437,6 +499,7 @@
       if(button.dataset.viewCandidate){state.candidate=button.dataset.viewCandidate;state.artifact='changes';state.scenario=state.experiment.runs?.findLast(r=>r.candidate===state.candidate)?.scenario || 'original';state.tab='diff';state.expanded=false;const url=new URL(location.href);url.searchParams.set('candidate',state.candidate);history.pushState({},'',url);renderExperiment();await loadDiff();return;}
       if(button.dataset.tab){switchTab(button.dataset.tab);return;}
       if(button.dataset.artifact){state.artifact=button.dataset.artifact;state.expanded=false;renderExperiment();await loadDiff();return;}
+      if(button.dataset.grouping){state.grouping=button.dataset.grouping;persist();renderDiff();return;}
       if(button.dataset.layout){state.layout=button.dataset.layout;persist();$$('[data-layout]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));renderDiff();return;}
       if(button.hasAttribute('data-plus')){openComment(Number(button.dataset.plus));return;}
       if(button.dataset.editComment){editComment(button.dataset.group,button.dataset.editComment);return;}

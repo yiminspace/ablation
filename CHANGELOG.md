@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- Group related prompt edits by requirement, with rationale, expected effects and GitHub source links; keep original line diffs and comment anchors available in both views.
+
+- Show only candidate prompt changes in the default diff, with decoded text, line and word differences, collapsed context, without duplicate summaries or replay status; show modification rationale directly below the diff. Keep input history and scenario changes in the full request evidence.
+
 - Add optional platform-neutral replay tracing headers, response ID/link extraction, and independently authenticated log lookups.
 - Save external evidence with each run and display log links in the GUI without treating association failure as model failure.
 

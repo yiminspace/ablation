@@ -80,6 +80,65 @@ def display_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
 
 
+def readable_request(value: Any) -> str:
+    if not isinstance(value, dict):
+        return value if isinstance(value, str) else display_json(value)
+    sections = []
+    for key, item in value.items():
+        pointer = str(key).replace("~", "~0").replace("/", "~1")
+        text = item if isinstance(item, str) else display_json(item)
+        sections.append(f"字段：/{pointer}\n{text}")
+    return "\n\n".join(sections)
+
+
+def validate_change_groups(groups: Any) -> list[dict]:
+    if not isinstance(groups, list):
+        raise ValueError("Change groups must be a list")
+    identifiers = set()
+    for group in groups:
+        if not isinstance(group, dict) or set(group) != {"id", "title", "reason", "effect", "matches", "sources"}:
+            raise ValueError("Each change group requires id, title, reason, effect, matches and sources")
+        identifier = validate_id(group["id"])
+        if identifier in identifiers:
+            raise ValueError("Duplicate change group ID")
+        identifiers.add(identifier)
+        for key in ("title", "reason", "effect"):
+            if not isinstance(group[key], str) or not group[key].strip():
+                raise ValueError("Change group text must be non-empty")
+        if not isinstance(group["matches"], list) or not group["matches"] or any(not isinstance(x, str) or not x.strip() for x in group["matches"]):
+            raise ValueError("Each change group needs non-empty exact text anchors")
+        if not isinstance(group["sources"], list):
+            raise ValueError("Change group sources must be a list")
+        from urllib.parse import urlsplit
+        for source in group["sources"]:
+            if not isinstance(source, dict) or set(source) != {"label", "url"} or not isinstance(source["label"], str) or not source["label"].strip() or not isinstance(source["url"], str):
+                raise ValueError("Sources require a label and URL")
+            url = urlsplit(source["url"])
+            if url.scheme != "https" or url.netloc != "github.com" or len(url.path.split("/")) < 6 or url.path.split("/")[3] != "blob":
+                raise ValueError("Sources must be direct HTTPS GitHub blob links")
+    return copy.deepcopy(groups)
+
+
+def group_diff_rows(rows: list[dict], groups: list[dict]) -> list[dict]:
+    results = [{**group, "row_indices": []} for group in groups]
+    position = 0
+    while position < len(rows):
+        if rows[position]["kind"] == "equal":
+            position += 1
+            continue
+        end = position + 1
+        while end < len(rows) and rows[end]["kind"] != "equal":
+            end += 1
+        text = "\n".join((row.get("before") or "") + "\n" + (row.get("after") or "") for row in rows[position:end])
+        owners = [group for group in results if any(anchor in text for anchor in group["matches"])]
+        if len(owners) > 1:
+            raise ValueError("Change group anchors overlap in a diff hunk")
+        if owners:
+            owners[0]["row_indices"].extend(range(position, end))
+        position = end
+    return results
+
+
 def prompt_view(request: dict) -> dict:
     result = {key: copy.deepcopy(request[key]) for key in ("instructions", "tools", "tool_choice") if key in request}
     history_key = "messages" if "messages" in request else "input"
@@ -168,6 +227,29 @@ class Workbench:
             experiment["candidates"].append(candidate)
             request_for(experiment, candidate["id"])
             validate_patch_credentials(request_for(experiment, parent), candidate["patch"], configured_secrets(self.store.config()))
+            self.store.save(experiment)
+            return experiment
+
+    def set_change_groups(self, experiment_id: str, *, candidate: str, groups: list) -> dict:
+        writable_intent()
+        groups = validate_change_groups(redact(groups, configured_secrets(self.store.config())))
+        if candidate == "baseline":
+            raise ValueError("Baseline annotations cannot be changed")
+        with self.store.lock(experiment_id):
+            experiment = self._load(experiment_id)
+            item = find_item(experiment["candidates"], candidate, "candidate")
+            previous = item.get("change_groups")
+            item["change_groups"] = groups
+            try:
+                diff = self._compare(experiment, base="baseline", candidate=candidate, scenario="original", artifact="changes")
+                if any(not group["row_indices"] for group in diff["change_groups"]):
+                    raise ValueError("Every change group must match a changed diff hunk")
+            except Exception:
+                if previous is None:
+                    item.pop("change_groups", None)
+                else:
+                    item["change_groups"] = previous
+                raise
             self.store.save(experiment)
             return experiment
 
@@ -289,8 +371,9 @@ class Workbench:
         base_label, candidate_label = base_item["label"], candidate_item["label"]
         notes = [f"Scenario: {scene['label']} ({scene['origin']}). {scene['description']}"]
         if artifact == "changes":
-            before, after = experiment["baseline"]["request"], after_request
-            base_label = "原始数据"
+            before = prompt_view(experiment["baseline"]["request"])
+            after = prompt_view(request_for(experiment, candidate, "original"))
+            base_label = "原始提示词"
         elif artifact == "prompt":
             before, after = prompt_view(before_request), prompt_view(after_request)
         elif artifact == "input":
@@ -322,12 +405,11 @@ class Workbench:
             before, after = outputs
         else:
             before, after = before_request, after_request
-        if artifact == "changes":
-            before_text = json.dumps(before, ensure_ascii=False, indent=2, allow_nan=False)
-            after_text = json.dumps(after, ensure_ascii=False, indent=2, allow_nan=False)
+        if artifact in {"changes", "prompt"}:
+            before_text, after_text = readable_request(before), readable_request(after)
         else:
             before_text, after_text = display_json(before), display_json(after)
-        return {"base_label": base_label, "candidate_label": candidate_label, "artifact": artifact, "before": before_text, "after": after_text, "rows": split_diff(before_text, after_text), "rationale": candidate_item["rationale"], "notes": notes}
+        return {"base_label": base_label, "candidate_label": candidate_label, "artifact": artifact, "before": before_text, "after": after_text, "rows": split_diff(before_text, after_text), "rationale": candidate_item["rationale"], "notes": notes, "change_groups": group_diff_rows(split_diff(before_text, after_text), candidate_item.get("change_groups", [])) if artifact in {"changes", "prompt"} and base == "baseline" else []}
 
     def submit_review(self, experiment_id: str, review: dict) -> dict:
         if not isinstance(review, dict):
@@ -519,6 +601,7 @@ class Workbench:
         original = find_item(experiment["scenarios"], "original", "scenario")
         require(baseline_candidate.get("patch") == [] and original.get("patch") == [], "baseline and original scenario must remain unchanged")
         for item in experiment["candidates"]:
+            validate_change_groups(item.get("change_groups", []))
             for key in ("label", "rationale", "created_at"):
                 text(item.get(key), "candidate " + key)
             require(isinstance(item.get("patch"), list), "candidate patch must be a list")

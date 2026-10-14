@@ -35,31 +35,66 @@ class EngineFixture(unittest.TestCase):
 
 
 class EngineTests(EngineFixture):
-    def test_changes_show_input_edits_and_keep_original_baseline(self):
-        experiment = self.workbench.add_candidate(self.id, label="Remove message", patch=[{"op": "remove", "path": "/input/0"}], rationale="Check all request changes.")
+    def test_changes_only_show_candidate_prompt_not_input_or_scenario(self):
+        experiment = self.workbench.add_candidate(self.id, label="Remove message", patch=[{"op": "remove", "path": "/input/0"}], rationale="Check input isolation.")
         candidate = experiment["candidates"][-1]["id"]
         diff = self.workbench.compare(self.id, candidate=candidate, artifact="changes")
-        self.assertIn("Did it send?", diff["before"])
-        self.assertNotIn("Did it send?", diff["after"])
-        self.assertTrue(any(row["kind"] != "equal" for row in diff["rows"]))
+        self.assertEqual(diff["before"], diff["after"])
+        self.assertNotIn("/input", diff["before"])
+        raw = self.workbench.compare(self.id, candidate=candidate, artifact="request")
+        self.assertEqual(json.loads(raw["after"])["input"], [])
         scenario = self.add_scenario()
         tool_candidate = self.add_candidate()
         diff = self.workbench.compare(self.id, candidate=tool_candidate, scenario=scenario, artifact="changes")
-        self.assertIn("Did it send?", diff["before"])
-        self.assertNotIn("unconfirmed", diff["before"])
-        self.assertIn("unconfirmed", diff["after"])
+        self.assertNotIn("Did it send?", diff["before"])
+        self.assertNotIn("unconfirmed", diff["after"])
+        self.assertIn("observed evidence", diff["after"])
+        original = self.workbench.compare(self.id, candidate=tool_candidate, artifact="changes")
+        self.assertEqual(diff["rows"], original["rows"])
 
-    def test_json_changes_preserve_structure_and_review_evidence(self):
-        experiment = self.workbench.add_candidate(self.id, label="Multiline", patch=[{"op": "replace", "path": "/instructions", "value": "Report only verified outcomes.\nCheck evidence first."}], rationale="Readable review.")
+    def test_readable_changes_preserve_request_and_review_evidence(self):
+        experiment = self.workbench.add_candidate(self.id, label="Multiline", patch=[{"op": "replace", "path": "/instructions", "value": "Report verified outcomes.\nCheck evidence first."}], rationale="Readable review.")
         candidate = experiment["candidates"][-1]["id"]
         diff = self.workbench.compare(self.id, candidate=candidate, artifact="changes")
-        self.assertEqual(json.loads(diff["before"]), self.request)
-        self.assertEqual(list(json.loads(diff["before"])), list(self.request))
-        self.assertEqual(json.loads(diff["after"])["instructions"], "Report only verified outcomes.\nCheck evidence first.")
+        self.assertIn("字段：/instructions\nReport only verified outcomes.", diff["before"])
+        self.assertIn("字段：/instructions\nReport verified outcomes.\nCheck evidence first.", diff["after"])
+        self.assertNotIn("\\n", diff["after"])
+        raw = self.workbench.compare(self.id, candidate=candidate, artifact="request")
+        self.assertEqual(json.loads(raw["before"]), self.request)
+        self.assertEqual(json.loads(raw["after"])["instructions"], "Report verified outcomes.\nCheck evidence first.")
         row = next(row for row in diff["rows"] if row["kind"] == "replace")
         review = self.workbench.submit_review(self.id, {"candidate": candidate, "comments": [dict(row, artifact="changes", text="Explain this instruction.")]})
         self.assertEqual(review["comments"][0]["after"], row["after"])
         self.assertEqual(review["snapshot"]["diffs"]["changes"]["after"], diff["after"])
+
+    def test_requirement_annotations_preserve_request_and_comment_anchors(self):
+        candidate = self.add_candidate()
+        before = self.workbench.get(self.id)
+        raw = self.workbench.compare(self.id, candidate=candidate, artifact="changes")
+        groups = [{"id": "coverage", "title": "改进判定", "reason": "明确完成证据", "effect": "判断可解释", "matches": ["observed evidence"], "sources": [{"label": "定义", "url": "https://github.com/example/repo/blob/main/tools.py#L1"}]}]
+        self.workbench.set_change_groups(self.id, candidate=candidate, groups=groups)
+        annotated = self.workbench.compare(self.id, candidate=candidate, artifact="changes")
+        self.assertEqual(raw["rows"], annotated["rows"])
+        self.assertEqual(before["baseline"], self.workbench.get(self.id)["baseline"])
+        self.assertEqual(request_for(before, candidate), request_for(self.workbench.get(self.id), candidate))
+        indices = annotated["change_groups"][0]["row_indices"]
+        self.assertTrue(indices)
+        self.assertTrue(all(annotated["rows"][i]["kind"] != "equal" for i in indices))
+        row = annotated["rows"][indices[0]]
+        review = self.workbench.submit_review(self.id, {"candidate": candidate, "comments": [dict(row, artifact="changes", text="为什么这样改？")]})
+        self.assertEqual(review["comments"][0]["after"], row["after"])
+        self.assertEqual(self.workbench.compare(self.id, candidate=candidate, artifact="request")["change_groups"], [])
+
+    def test_requirement_annotations_reject_unsafe_links_and_unmatched_anchors(self):
+        candidate = self.add_candidate()
+        group = {"id": "coverage", "title": "判定", "reason": "原因", "effect": "效果", "matches": ["observed evidence"], "sources": []}
+        before = self.workbench.get(self.id)
+        for invalid in [{**group, "matches": ["absent anchor"]}, {**group, "sources": [{"label": "危险链接", "url": "javascript:alert(1)"}]}]:
+            with self.assertRaises(ValueError):
+                self.workbench.set_change_groups(self.id, candidate=candidate, groups=[invalid])
+            self.assertEqual(before, self.workbench.get(self.id))
+        with self.assertRaises(ValueError):
+            self.workbench.set_change_groups(self.id, candidate=candidate, groups=[group, {**group, "id": "other"}])
 
     def test_immutable_baseline_and_full_tools_array(self):
         candidate = self.add_candidate()
