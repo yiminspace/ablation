@@ -236,7 +236,7 @@
           const current=Math.min(...group.row_indices.map(index=>Math.abs(index-row.index)));
           if(current<distance){distance=current;nearest=group.id;}
         });
-        if(distance<=3)owners.set(row.index,nearest);
+        if(distance<=3&&(row.same||distance===0))owners.set(row.index,nearest);
       });
       body=requirementGroups.map(group=>{
         const selected=new Set();

@@ -67,7 +67,7 @@ async function main(){
   const multiline=Array.from({length:50},(_,i)=>i===25?'Gmail: search mail.':`Unchanged context ${i}`).join('\n');
   const detailed=await api('/api/import',{source:{kind:'request',data:{model:'fixture-model',instructions:multiline,input:[{role:'user',content:'Synthetic'}]}},title:'Multiline diff fixture'});
   const detailedId=detailed.id;
-  const detailedCandidate=await api(`/api/experiments/${detailedId}/candidates`,{label:'补充联系人查询',patch:[{op:'replace',path:'/instructions',value:multiline.replace('Gmail: search mail.','Gmail: search mail; search contacts <script>.')},{op:'remove',path:'/input/0'}],rationale:'补充联系人查询范围。'});
+  const detailedCandidate=await api(`/api/experiments/${detailedId}/candidates`,{label:'补充联系人查询',patch:[{op:'replace',path:'/instructions',value:multiline.replace('Gmail: search mail.','Gmail: search mail; search contacts <script>.').replace('Unchanged context 27','Unrelated policy change')},{op:'remove',path:'/input/0'}],rationale:'补充联系人查询范围。'});
   const detailedCid=detailedCandidate.candidates.at(-1).id;
   await page.goto(`${url}?experiment=${detailedId}&candidate=${detailedCid}`);
   await page.locator('.diff-row').first().waitFor();
@@ -88,6 +88,12 @@ async function main(){
   assert((await page.locator('.diff-more').count())>0);
   await page.locator('.diff-more button').first().click();
   assert((await page.locator('.diff-row').count())>50);
+  await api(`/api/experiments/${detailedId}/change-groups`,{candidate:detailedCid,groups:[{id:'mail',title:'邮件查询',reason:'明确查询范围。',effect:'可检查查询说明。',matches:['search contacts <script>'],sources:[]}]});
+  await page.reload();
+  await page.locator('[data-grouping="requirements"]').click();
+  await page.locator('.requirement-group h3').filter({hasText:'邮件查询'}).waitFor();
+  assert(!(await page.locator('.requirement-group').filter({has:page.getByRole('heading',{name:'邮件查询',exact:true})}).innerText()).includes('Unrelated policy change'));
+  assert((await page.locator('.requirement-group').filter({has:page.getByRole('heading',{name:'其他改动与评论',exact:true})}).innerText()).includes('Unrelated policy change'));
   await page.goto(`${url}?experiment=${eid}`);
   await page.locator('.diff-row').first().waitFor();
   // Inline review, portable handoff, then real configured subprocess reply.
