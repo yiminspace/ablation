@@ -70,3 +70,14 @@
 @media(max-width:1050px){.focused-workbench .heading-row{display:flex}.focused-workbench .heading-row .button-row{margin:0}.focused-workbench .heading-row h1{font-size:22px}}
 @media(max-width:760px){.focused-workbench .experiment-heading{padding-top:19px}.focused-workbench .heading-row{align-items:start}.focused-workbench .heading-row h1{font-size:21px}.focused-workbench .heading-row .button-row{flex-direction:column-reverse;align-items:end;gap:7px}.focused-workbench .toolbar>.button-row{margin-left:0}.comparison-settings .compare-controls{grid-template-columns:1fr 1fr}.comparison-settings .compare-controls label:last-child{grid-column:1/-1}.focused-workbench .page-tabs{margin-top:14px}}
 @media(max-width:480px){.focused-workbench .heading-row h1{font-size:20px}.focused-workbench .heading-row{gap:12px}.focused-workbench .heading-row .button-row{min-width:80px}.focused-workbench .page-tabs{gap:23px}.focused-workbench .review-toolbar{gap:10px}.focused-workbench .review-toolbar>.button-row{width:100%;justify-content:space-between}.focused-workbench .artifact-nav{width:100%;gap:4px}.artifact-tab,.evidence-menu>summary{padding-inline:10px}.comparison-settings{padding:12px}.comparison-settings .compare-controls{display:block}.comparison-settings .compare-controls label{display:block;margin-bottom:10px}.version-caption{display:none}.effect-summary{line-height:1.7}.focused-workbench .diff-headrow>span{white-space:normal}.review-intent{gap:14px}}
+
+.inline-change{color:var(--fg);background:var(--add-word);border-radius:2px}.del .inline-change,.summary-before .inline-change{background:var(--del-word)}.summary-after .inline-change{background:var(--add-word)}:root{--del-word:#ffcecb}@media(prefers-color-scheme:dark){:root{--del-word:#70343c}}:root[data-theme=light]{--del-word:#ffcecb}:root[data-theme=dark]{--del-word:#70343c}
+
+.view-grouping { display:flex; gap:12px; flex-wrap:wrap; }
+.view-grouping [aria-pressed="true"] { color:var(--fg); font-weight:600; text-decoration:underline; text-underline-offset:5px; }
+.requirement-group { border-top:1px solid var(--border); padding-top:16px; margin-bottom:24px; }
+.requirement-heading { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; padding:0 20px; }
+.requirement-heading h3 { margin:0; font-size:16px; }
+.requirement-reason { padding:4px 20px 16px; }
+.requirement-reason p { margin:8px 0; }
+.requirement-sources a { color:var(--blue); }

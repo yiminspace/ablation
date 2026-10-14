@@ -215,7 +215,7 @@ def make_server(workbench, port=0):
                     eid, action = match.groups()
                     if not action: result = workbench.get(eid)
                     elif action == "diff":
-                        result = workbench.compare(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact")})
+                        result = workbench.compare(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact", "format")})
                     elif action == "export":
                         with tempfile.TemporaryDirectory() as directory:
                             target = Path(directory) / "experiment.json"
@@ -252,6 +252,7 @@ def make_server(workbench, port=0):
                 elif match := re.fullmatch(r"/api/experiments/([A-Za-z0-9_-]+)/(.*)", path):
                     eid, action = match.groups()
                     if action == "candidates": result = workbench.add_candidate(eid, **body)
+                    elif action == "change-groups": result = workbench.set_change_groups(eid, **body)
                     elif action == "scenarios": result = workbench.add_scenario(eid, **body)
                     elif action == "reviews": result = workbench.submit_review(eid, body)
                     elif action == "run": result = jobs.start(eid, body)

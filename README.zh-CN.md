@@ -25,6 +25,8 @@ ablation demo --open
 
 候选说明统一写两句：先交代为什么改，再说明大概修改位置及影响，附核实过的 GitHub 源码链接；来源或位置没查清时注明待确认。CLI 用 `--rationale`，或用 `--rationale-file rationale.md` 读取多行说明；GUI 在 diff 下显示同一段文字和可点击的源码链接。
 
+候选可用 `ablation change-groups <experiment> --candidate <candidate> --file groups.json` 补充需求分组，不改变请求、回放或评论锚点。分组包含 `id`、`title`、中文 `reason`、`effect`、精确文本锚点 `matches` 和源码链接 `sources`（每项为 `label`、`url`）。锚点将关联的 diff 改动段合为一项需求；冲突或未命中的分组会报错。GUI 默认按需求展示，切换“按原文”仍使用逐行高亮和行内评论。源码链接仅接受 GitHub 文件直达链接。
+
 首屏汇总统计所选版本与场景的全部历史回放，后一次通过不会掩盖之前的失败。响应 diff 展示最近完成的输出，更早的证据可在运行记录中查看。
 
 完整配置、命令与示例见 [English README](README.md)。

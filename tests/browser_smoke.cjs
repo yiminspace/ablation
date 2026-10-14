@@ -57,8 +57,45 @@ async function main(){
   await page.locator('.diff-row').first().waitFor();
   let exp=await api(`/api/experiments/${eid}`);assert.equal(exp.candidates.length,2);assert.equal(exp.runs.length,0);
   assert.equal(await page.locator('#check-button, #code-preview').count(),0);
-  assert((await page.locator('.rationale').innerText()).includes('The backend owns this description; tool parameters stay unchanged. Source'));
+  assert.equal(await page.locator('.change-summary').count(),0);
+  assert.equal(await page.locator('.rationale details').count(),0);
+  assert((await page.locator('.rationale').innerText()).includes('The backend owns this description'));
   assert.equal(await page.locator('.rationale a').getAttribute('href'),'https://github.com/example/prompt-project/blob/0123456789abcdef0123456789abcdef01234567/src/tools.py#L30');
+  assert.equal(await page.locator('#comparison-status').isVisible(),false);
+  assert.equal(await page.locator('.diff-cell.add .inline-change').first().textContent(),'Evaluate');
+  // Multiline prompt changes stay localized and remain safe HTML text.
+  const multiline=Array.from({length:50},(_,i)=>i===25?'Gmail: search mail.':`Unchanged context ${i}`).join('\n');
+  const detailed=await api('/api/import',{source:{kind:'request',data:{model:'fixture-model',instructions:multiline,input:[{role:'user',content:'Synthetic'}]}},title:'Multiline diff fixture'});
+  const detailedId=detailed.id;
+  const detailedCandidate=await api(`/api/experiments/${detailedId}/candidates`,{label:'补充联系人查询',patch:[{op:'replace',path:'/instructions',value:multiline.replace('Gmail: search mail.','Gmail: search mail; search contacts <script>.').replace('Unchanged context 27','Unrelated policy change')},{op:'remove',path:'/input/0'}],rationale:'补充联系人查询范围。'});
+  const detailedCid=detailedCandidate.candidates.at(-1).id;
+  await page.goto(`${url}?experiment=${detailedId}&candidate=${detailedCid}`);
+  await page.locator('.diff-row').first().waitFor();
+  assert((await page.locator('.diff-cell.add').first().innerText()).includes('search contacts <script>'));
+  assert(!(await page.locator('#diff-file').innerText()).includes('/input'));
+  assert(!(await page.locator('#diff-file').innerText()).includes('测试输入变化'));
+  await page.getByRole('button',{name:'完整 JSON',exact:true}).click();
+  await page.locator('#diff-file').getByText('"input": [',{exact:false}).first().waitFor();
+  assert((await page.locator('#diff-file').innerText()).includes('Synthetic'));
+  await page.locator('[data-artifact="changes"]').first().click();
+  await page.locator('.diff-row').first().waitFor();
+  await page.emulateMedia({colorScheme:'dark'});
+  const darkHighlight=await page.locator('.diff-cell.add .inline-change').first().evaluate(el=>getComputedStyle(el).backgroundColor);
+  assert.equal(darkHighlight,'rgb(35, 92, 57)');
+  await page.emulateMedia({colorScheme:'light'});
+  assert.equal(await page.locator('#diff-file script').count(),0);
+  assert((await page.locator('.diff-row').count())<20);
+  assert((await page.locator('.diff-more').count())>0);
+  await page.locator('.diff-more button').first().click();
+  assert((await page.locator('.diff-row').count())>50);
+  await api(`/api/experiments/${detailedId}/change-groups`,{candidate:detailedCid,groups:[{id:'mail',title:'邮件查询',reason:'明确查询范围。',effect:'可检查查询说明。',matches:['search contacts <script>'],sources:[]}]});
+  await page.reload();
+  await page.locator('[data-grouping="requirements"]').click();
+  await page.locator('.requirement-group h3').filter({hasText:'邮件查询'}).waitFor();
+  assert(!(await page.locator('.requirement-group').filter({has:page.getByRole('heading',{name:'邮件查询',exact:true})}).innerText()).includes('Unrelated policy change'));
+  assert((await page.locator('.requirement-group').filter({has:page.getByRole('heading',{name:'其他改动与评论',exact:true})}).innerText()).includes('Unrelated policy change'));
+  await page.goto(`${url}?experiment=${eid}`);
+  await page.locator('.diff-row').first().waitFor();
   // Inline review, portable handoff, then real configured subprocess reply.
   await page.locator('.diff-row [data-plus]').first().click();
   await page.locator('#inline-comment').fill('Why does the accepted choice change the requirement?');
@@ -172,6 +209,48 @@ async function main(){
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile overflow');
   const screenshots=process.env.ABLATION_SCREENSHOTS;
   if(screenshots){fs.mkdirSync(screenshots,{recursive:true});await page.screenshot({path:path.join(screenshots,'discussion-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.locator('[data-tab="diff"]').click();await page.locator('[data-artifact="changes"]').click();await page.screenshot({path:path.join(screenshots,'review-desktop.png'),fullPage:true});}
+  // Requirement groups reuse exact diff rows and comments across both views.
+  const groupedCandidate=exp.candidates[1].id;
+  await api(`/api/experiments/${eid}/change-groups`,{candidate:groupedCandidate,groups:[{id:'completion',title:'按授权后的需求判断',reason:'保留用户确认后的任务范围。',effect:'完成判定与当前要求一致。',matches:['Evaluate the authorized task.'],sources:[{label:'源码定义',url:'https://github.com/example/prompt-project/blob/0123456789abcdef0123456789abcdef01234567/src/tools.py#L30'}]}]});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.goto(url+`?experiment=${eid}&candidate=${groupedCandidate}`);
+  await page.locator('[data-grouping="requirements"]').click();
+  await page.locator('.requirement-group h3').filter({hasText:'按授权后的需求判断'}).waitFor();
+  assert.equal(await page.locator('.requirement-sources a').getAttribute('href'),'https://github.com/example/prompt-project/blob/0123456789abcdef0123456789abcdef01234567/src/tools.py#L30');
+  const groupedAnchor=await page.locator('.requirement-group .diff-cell.add [data-plus]').first().getAttribute('data-plus');
+  await page.locator('.requirement-group .diff-cell.add [data-plus]').first().click();
+  await page.locator('#inline-comment').fill('分组评论保留原文定位。');
+  await page.locator('[data-action="add-comment"]').click();
+  await page.locator('[data-grouping="original"]').click();
+  assert.equal(await page.locator('.requirement-group').count(),0);
+  await page.locator('#diff-file').getByText('分组评论保留原文定位。',{exact:true}).waitFor();
+  assert(await page.locator(`[data-plus="${groupedAnchor}"]`).count());
+  assert(await page.locator('.inline-change').count());
+  await page.locator('[data-grouping="requirements"]').click();
+  await page.locator('.requirement-group').getByText('分组评论保留原文定位。',{exact:true}).waitFor();
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Requirement view mobile overflow');
+  // Pre-upgrade JSON drafts stay submittable and saved locations use their snapshot.
+  const oldDiff=await api(`/api/experiments/${eid}/diff?candidate=${groupedCandidate}&artifact=changes&format=legacy`);
+  const oldRow=oldDiff.rows.find(row=>row.kind!=='equal');
+  const oldReview=await api(`/api/experiments/${eid}/reviews`,{candidate:groupedCandidate,comments:[{...oldRow,artifact:'changes',text:'旧版 JSON 评论位置'}]});
+  await page.reload();
+  await page.locator('#experiment-title').waitFor();
+  await page.locator('[data-tab="discussion"]').click();
+  await page.locator(`[data-jump-review="${oldReview.id}"]`).click();
+  await page.locator('.diff-row').first().waitFor();
+  await page.locator('#diff-file').getByText('旧版 JSON 评论位置',{exact:true}).waitFor();
+  assert((await page.locator('#diff-file').innerText()).includes('"instructions"'));
+  // More than 500 context rows must not hide later ungrouped changes.
+  const longText=Array.from({length:1200},(_,i)=>`original line ${i}`).join('\n');
+  const longAfter=Array.from({length:1200},(_,i)=>i===0?'grouped first change':i%2===0?`ungrouped line ${i}`:`original line ${i}`).join('\n');
+  const big=await api('/api/import',{source:{kind:'request',data:{model:'fixture-model',instructions:longText,input:[]}},title:'Long grouped diff'});
+  const bigCandidate=(await api(`/api/experiments/${big.id}/candidates`,{label:'Long edits',patch:[{op:'replace',path:'/instructions',value:longAfter}],rationale:'长文本分组'})).candidates.at(-1).id;
+  await api(`/api/experiments/${big.id}/change-groups`,{candidate:bigCandidate,groups:[{id:'first',title:'首处改动',reason:'保留其他未分组改动。',effect:'后续改动可见。',matches:['grouped first change'],sources:[]}]});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.goto(url+`?experiment=${big.id}&candidate=${bigCandidate}`);
+  await page.locator('[data-grouping="requirements"]').click();
+  await page.locator('.requirement-group').getByText('ungrouped line 1198',{exact:false}).waitFor();
   assert.deepEqual(pageErrors,[]);
   console.log(JSON.stringify({ok:true,experiment:eid,pairedRequests:packets.length,reviews:exp.reviews.length,agentReplies:exp.reviews[0].replies.length,checks:exp.runs.map(r=>r.passed),pageErrors}));
 }
