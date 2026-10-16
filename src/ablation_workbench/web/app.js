@@ -87,7 +87,7 @@
     $('#experiment-title').textContent=e.title || '未命名实验';
 
     $('#discussion-count').textContent=e.reviews?.length || 0; $('#discussion-count').hidden=!e.reviews?.length; $('#runs-count').textContent=e.runs?.length || 0;$('#runs-count').hidden=!e.runs?.length;
-    updateDraftCount(); renderJobs(); renderDiscussion(); renderRuns();
+    updateDraftCount(); renderJobs(); renderDiscussion(); renderRuns(); renderRunLogFeed();
     $$('[data-artifact]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.artifact===state.artifact)));
     $$('[data-layout]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.layout===state.layout)));
     switchTab(state.tab);
@@ -103,6 +103,19 @@
     let text='尚未运行，修改效果待验证。';
     if(runs.length)text=`当前比较的历史回放 ${runs.length} 次：${Object.entries(counts).filter(([,n])=>n).map(([label,n])=>`${n} ${label}`).join(' · ')}。${candidates.some(candidate=>!runs.some(r=>r.candidate===candidate))?'部分版本尚未回放。':''}`;
     return `<div class="effect-summary"><span class="effect-dot" aria-hidden="true"></span><span>${esc(text)}</span>${state.artifact==='response'?'':'<button class="text-btn" data-artifact="response">查看输出</button>'}</div>`;
+  }
+  function renderRunLogFeed() {
+    const feed=$('#run-log-feed');
+    const runs=state.experiment?.runs || [];
+    const batch=runs.at(-1)?.batch_id;
+    const current=runs.filter(run=>run.batch_id===batch);
+    feed.hidden=!current.length;
+    feed.innerHTML=current.map(run=>{
+      const version=run.candidate==='baseline'?'原提示词':label(state.experiment.candidates,run.candidate);
+      const evidence=run.external_evidence || [];
+      const logs=evidence.length?evidenceLinks(run):`<span class="muted">${activeStatus(run.status)?'等待日志':'未获取到日志链接'}</span>`;
+      return `<div class="run-log-line"><span class="run-log-label">${esc(version)} · 第 ${esc(run.repeat ?? 1)} 次</span>${runBadge(run)}<div class="run-log-links">${logs}</div></div>`;
+    }).join('');
   }
   function experimentDetails() {
     const e=state.experiment,source=e.source || {};
@@ -494,7 +507,7 @@
         const jobs=results[0].value.jobs || [],signature=JSON.stringify(jobs);
         if(signature!==state.lastJobs){state.jobs=jobs;state.lastJobs=signature;if(state.experiment){renderJobs();if(!editing())renderRuns();else state.deferred=true;}}
       }
-      if(results[1].status==='fulfilled'&&results[1].value&&results[1].value.revision!==state.experiment?.revision){state.experiment=results[1].value;if(editing())state.deferred=true;else{renderExperiment();await loadDiff();}}
+      if(results[1].status==='fulfilled'&&results[1].value&&results[1].value.revision!==state.experiment?.revision){state.experiment=results[1].value;renderRunLogFeed();if(editing())state.deferred=true;else{renderExperiment();await loadDiff();}}
     } finally {pollRunning=false;}
   }
   async function createDemo(button) {

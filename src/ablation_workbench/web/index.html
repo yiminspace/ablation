@@ -26,6 +26,7 @@
     <section id="experiment" hidden>
       <div class="experiment-heading">
         <div class="heading-row"><h1 id="experiment-title"></h1><div class="button-row"><button class="text-btn detail-link" data-action="experiment-details">实验详情</button><button class="btn primary" data-action="run">运行比较</button></div></div>
+        <div id="run-log-feed" class="run-log-feed" aria-label="本批测试日志" aria-live="polite" hidden></div>
         <nav class="page-tabs" aria-label="实验视图"><button class="page-tab" data-tab="diff" aria-current="page">改动</button><button class="page-tab" data-tab="discussion">讨论 <span class="count" id="discussion-count" hidden>0</span></button><button class="page-tab" data-tab="runs">运行记录 <span class="count" id="runs-count" hidden>0</span></button></nav>
       </div>
       <div class="experiment-content">

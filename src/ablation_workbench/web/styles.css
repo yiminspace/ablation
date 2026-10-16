@@ -16,6 +16,13 @@
 .focused-workbench .heading-row h1{font-size:23px;margin:0;max-width:900px}
 .focused-workbench .heading-row .button-row{gap:16px}
 .focused-workbench .detail-link{font-size:12px;color:var(--muted)}
+.focused-workbench .global-header,.focused-workbench [data-tab="runs"]{display:none}
+.run-log-feed{display:grid;gap:7px;margin-top:15px;font-size:12px}
+.run-log-line{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px}
+.run-log-label{color:var(--muted)}
+.run-log-links{display:flex;flex-wrap:wrap;gap:6px 14px;min-width:0}
+.run-log-links .small{display:inline}
+.run-log-links p{margin:0}
 .focused-workbench .page-tabs{margin-top:19px;gap:28px}
 .focused-workbench .experiment-content{padding-top:17px}
 .focused-workbench .workspace-grid{display:block}
