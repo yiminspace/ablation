@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from string import Formatter
 from urllib.parse import quote, urlsplit
 
@@ -74,7 +75,7 @@ def validate_observers(observers: list) -> None:
             lookup = observer["lookup"]
             if not isinstance(lookup, dict):
                 raise ValueError("Observation lookup must be an object")
-            allowed_lookup = {"source_base_url", "source_path", "token_env", "source_user_env", "source_password_env", "records_pointer", "match_pointer", "match_value", "record_id_pointer", "url_pointer"}
+            allowed_lookup = {"source_base_url", "source_path", "token_env", "source_user_env", "source_password_env", "records_pointer", "match_pointer", "match_value", "record_id_pointer", "url_pointer", "attempts", "interval_seconds"}
             if set(lookup) - allowed_lookup:
                 raise ValueError("Unknown observation lookup field")
             validate_template(lookup.get("source_path"))
@@ -89,6 +90,12 @@ def validate_observers(observers: list) -> None:
             if "match_pointer" not in lookup or "match_value" not in lookup:
                 raise ValueError("Lookup requires an exact match_pointer and match_value")
             validate_template(lookup["match_value"])
+            attempts = lookup.get("attempts", 1)
+            interval = lookup.get("interval_seconds", 1)
+            if isinstance(attempts, bool) or not isinstance(attempts, int) or not 1 <= attempts <= 5:
+                raise ValueError("Lookup attempts must be an integer from 1 to 5")
+            if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not 0 <= interval <= 5:
+                raise ValueError("Lookup interval_seconds must be between 0 and 5")
 
 
 def tracking_headers(observers: list, context: dict) -> dict:
@@ -125,12 +132,17 @@ def collect_evidence(observers: list, context: dict, response: dict | None, head
             lookup = observer.get("lookup")
             if lookup:
                 settings = {**lookup, "source_path": render(lookup["source_path"], values, url=True)}
-                raw, _ = fetch(settings["source_base_url"].rstrip("/") + settings["source_path"], source_headers(settings), timeout=5)
-                document = json.loads(raw)
-                records = pointer_get(document, lookup.get("records_pointer", ""))
-                records = records if isinstance(records, list) else [records]
-                expected = render(lookup["match_value"], values)
-                matches = [r for r in records if extract(r, lookup["match_pointer"]) == expected]
+                attempts = lookup.get("attempts", 1)
+                for attempt in range(attempts):
+                    raw, _ = fetch(settings["source_base_url"].rstrip("/") + settings["source_path"], source_headers(settings), timeout=5)
+                    document = json.loads(raw)
+                    records = pointer_get(document, lookup.get("records_pointer", ""))
+                    records = records if isinstance(records, list) else [records]
+                    expected = render(lookup["match_value"], values)
+                    matches = [r for r in records if extract(r, lookup["match_pointer"]) == expected]
+                    if matches or attempt + 1 == attempts:
+                        break
+                    time.sleep(lookup.get("interval_seconds", 1))
                 if len(matches) != 1:
                     raise ValueError("External log was not uniquely matched")
                 record_id = extract(matches[0], lookup.get("record_id_pointer"))
