@@ -64,6 +64,30 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(items[0]['record_id'], 'entry-2')
         self.assertEqual(items[1]['record_id'], 'provider-1')
 
+    def test_delayed_log_is_retried_and_uniquely_matched(self):
+        observer = {'name': 'Logs', 'lookup': {'source_base_url': 'https://logs.invalid', 'source_path': '/logs', 'records_pointer': '/logs', 'match_pointer': '/trace', 'match_value': '{run_id}', 'record_id_pointer': '/id', 'attempts': 3, 'interval_seconds': 2}, 'url_template': 'https://logs.invalid/view/{record_id}'}
+        validate_observers([observer])
+        responses = [(b'{"logs":[]}', {}), (b'{"logs":[{"trace":"other","id":"wrong"}]}', {}), (b'{"logs":[{"trace":"run_1","id":"correct"}]}', {})]
+        with patch('ablation_workbench.observation.fetch', side_effect=responses) as fetch, patch('ablation_workbench.observation.time.sleep') as sleep:
+            item = collect_evidence([observer], {'run_id': 'run_1'}, {}, {}, [])[0]
+        self.assertEqual(fetch.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(item['status'], 'available')
+        self.assertEqual(item['url'], 'https://logs.invalid/view/correct')
+
+        with patch('ablation_workbench.observation.fetch', return_value=(b'{"logs":[{"trace":"run_1","id":"a"},{"trace":"run_1","id":"b"}]}', {})) as fetch, patch('ablation_workbench.observation.time.sleep') as sleep:
+            item = collect_evidence([observer], {'run_id': 'run_1'}, {}, {}, [])[0]
+        self.assertEqual(fetch.call_count, 1)
+        sleep.assert_not_called()
+        self.assertEqual(item['status'], 'unavailable')
+        self.assertNotIn('url', item)
+
+    def test_lookup_retry_bounds(self):
+        lookup = {'source_base_url': 'https://logs.invalid', 'source_path': '/logs', 'match_pointer': '/trace', 'match_value': '{run_id}'}
+        for key, value in [('attempts', 0), ('attempts', 6), ('attempts', True), ('interval_seconds', -1), ('interval_seconds', 6), ('interval_seconds', True), ('interval_seconds', float('nan'))]:
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                validate_observers([{'name': 'Logs', 'lookup': {**lookup, key: value}}])
+
     def test_invalid_config_and_untrusted_links(self):
         for observer in [
             {'name': 'bad', 'headers': {'Authorization': 'secret'}},
