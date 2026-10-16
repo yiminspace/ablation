@@ -47,7 +47,10 @@ async function main(){
   assert.equal(await page.locator('[data-artifact="changes"]').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#more-evidence').count(),0);
   assert.equal(await page.locator('.artifact-nav button').count(),2);
-  await page.locator('[data-tab="runs"]').click();
+  assert.equal(await page.locator('.global-header').isVisible(),false);
+  assert.equal(await page.locator('[data-tab="runs"]').isVisible(),false);
+  // Exercise retained history rendering without exposing its navigation entry.
+  await page.locator('[data-tab="runs"]').evaluate(button=>button.click());
   await page.locator('[data-action="candidate"]').click();
   await page.locator('#candidate-form [name="label"]').fill('Use authorized choices');
   await page.locator('#candidate-form [name="rationale"]').fill('Follow the user-approved requirement.\nThe backend owns this description; tool parameters stay unchanged. [Source](https://github.com/example/prompt-project/blob/0123456789abcdef0123456789abcdef01234567/src/tools.py#L30)');
@@ -116,7 +119,7 @@ async function main(){
   assert.equal(exp.reviews[0].replies[0].comment_index,0);
   // Add assertions, then run paired requests through actual local HTTP.
   await page.locator('[data-tab="diff"]').click();
-  await page.locator('[data-tab="runs"]').click();
+  await page.locator('[data-tab="runs"]').evaluate(button=>button.click());
   await page.locator('[data-action="scenario"]').click();
   await page.locator('#scenario-form [name="label"]').fill('Synthetic paired check');
   await page.locator('#scenario-form [name="description"]').fill('Same synthetic input; assert the fixture response to verify paired scoring.');
@@ -130,7 +133,11 @@ async function main(){
   assert.deepEqual(exp.runs.map(r=>r.passed),[false,true]);
   assert.equal(packets.length,2);assert.deepEqual(packets.map(x=>x.input),[original.input,original.input]);
   assert.equal(packets[0].temperature,packets[1].temperature);
-  await page.locator('.page-tab[data-tab="runs"]').click();
+  await until(async()=>await page.locator('#run-log-feed a').count()===2);
+  assert.equal(await page.locator('#run-log-feed .run-log-line').count(),2);
+  assert((await page.locator('#run-log-feed').innerText()).includes('原提示词 · 第 1 次'));
+  assert.equal(await page.locator('#run-log-feed a').first().getAttribute('href'),'https://logs.example.invalid/records/synthetic-response');
+  await page.locator('.page-tab[data-tab="runs"]').evaluate(button=>button.click());
   await page.locator('#runs-view').getByText('断言未通过',{exact:true}).first().waitFor({timeout:15000});
   await page.locator('#runs-view a').first().waitFor();
   assert.equal(await page.locator('#runs-view a').first().getAttribute('href'),'https://logs.example.invalid/records/synthetic-response');
@@ -158,6 +165,7 @@ async function main(){
   await page.locator('#run-form [type="submit"]').click();
   await until(async()=>{exp=await api(`/api/experiments/${eid}`);return exp.runs.length===4&&exp.runs.every(r=>r.status==='completed');});
   assert.deepEqual(exp.runs.map(r=>r.passed),[false,true,true,true]);
+  await until(async()=>await page.locator('#run-log-feed .run-log-line').count()===2&&await page.locator('#run-log-feed .badge.error').count()===0);
   assert.equal(packets.length,4);assert.deepEqual(packets.map(x=>x.input),Array(4).fill(original.input));
   await page.locator('[data-tab="diff"]').click();
   await page.locator('#comparison-status').getByText(/历史回放 4 次：3 通过 · 1 未通过/).waitFor({timeout:15000});
