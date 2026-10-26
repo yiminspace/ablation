@@ -1,6 +1,11 @@
-# Ablation 中文使用说明
+---
+name: ablation
+description: 使用固定请求证据、回放实验和本地 diff 与评论 GUI 优化或比较提示词。用于测试提示词修改、检查回放或回应 ablation 审阅。
+---
 
-直接使用已安装的 `ablation` CLI，通过 `ablation --help` 和相应子命令帮助查看当前参数。CLI 负责实验、回放、对比和审阅；Agent 负责解释问题、提出修改并解读证据。
+# Ablation
+
+直接使用已安装的 `ablation` CLI，通过 `ablation --help` 和相应子命令帮助查看当前参数。CLI 负责实验、回放、对比和审阅；Agent 负责解释问题、提出修改并解读证据。英文指引见[英文说明](https://github.com/yiminspace/ablation/blob/main/skills/ablation/SKILL.md)。
 
 ## 选择证据
 
