@@ -27,6 +27,8 @@ Write the candidate rationale as two short sentences or paragraphs: first the pr
 
 Run comparable baseline and candidate requests under the same scenario and profile. Use a bounded number of repeats appropriate to the question. Assertions are explicit checks of the actual output; absent checks mean unscored, and network failures are not behavioral failures. Avoid writing a rule that mentions the particular test answer or downstream implementation label only to pass one example.
 
+Configure request tracking and log association for the target service before replaying, and verify each replay's corresponding log link before handoff. Mark failed association as incomplete evidence and explain why; a successful model call does not establish complete log evidence.
+
 The GUI is the human interface for inspecting diffs and writing review comments. The CLI is the LLM interface for all experiment operations, evidence retrieval, result analysis, statistics, assertions, diffs, and review replies. Use the CLI to launch the GUI and provide its URL for the user; verify launch through CLI status rather than browser inspection. Read human review comments and reply through the CLI. If required information is missing from the CLI, report that interface gap instead of switching to GUI automation or reading the webpage. Browser inspection belongs only to a separate, explicit request to test the GUI itself.
 
 Explain observed behavior and uncertainty; repeating one example does not demonstrate general reliability. Model tool calls are recorded evidence, not executed actions or proof of a real-world outcome.
