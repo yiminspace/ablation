@@ -1,0 +1,21 @@
+Bifrost message timeline components
+Source: https://github.com/maximhq/bifrost
+Revision: a34b03343536db3f1aa3519b1ceb8e4f0b2f7df7
+License: Apache License 2.0 (bifrost-LICENSE.txt)
+
+Adapted files:
+- ui/app/workspace/logs/views/responsesItemRow.tsx
+- ui/lib/utils/responsesItems.ts
+- isResponsesToolCallItem and hasNoToolArguments from ui/app/workspace/logs/sheets/logDetailView.utils.ts
+
+Local changes: portable React imports and utilities, native tool-name tooltip,
+Voyage theme tokens instead of Tailwind colors, Chinese expansion controls,
+accessible expansion state, visual line clamping, expanded short tool payloads,
+and inline images without a misleading empty-content label. The host mounts
+timelines in a full-height details drawer, wraps each timeline in a scrollable
+region with content displayed at 90% scale, and adds screenshot thumbnails that
+open at full size. It positions opened runs at the new output after image layout
+settles and
+highlights that output. User interaction preserves their reading position.
+Request/response adaptation and
+scoped layout styles are supplied by Ablation Workbench.

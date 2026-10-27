@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none" stroke="#7d8590" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <title>Ablation</title>
+  <rect x="2" y="5" width="11" height="22" rx="3"/>
+  <path d="M5.5 11h4m-4 5h4m-4 5h4M15 16h2"/>
+  <g stroke="#2f81f7">
+    <rect x="19" y="5" width="11" height="22" rx="3"/>
+    <path d="M22.5 11h4m-4 10h4"/>
+  </g>
+</svg>

@@ -39,7 +39,7 @@ packages = ["src/ablation_workbench"]
 path = "hatch_build.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/skills", "/tests", "/docs", "/README.md", "/README.zh-CN.md", "/CONTRIBUTING.md", "/CHANGELOG.md", "/LICENSE", "/pyproject.toml", "/hatch_build.py", "/package.json", "/package-lock.json"]
+include = ["/src", "/skills", "/tests", "/docs", "/scripts", "/ui", "/README.md", "/README.zh-CN.md", "/CONTRIBUTING.md", "/CHANGELOG.md", "/LICENSE", "/pyproject.toml", "/hatch_build.py", "/package.json", "/package-lock.json"]
 
 [tool.semantic_release]
 version_variables = ["src/ablation_workbench/__init__.py:__version__"]

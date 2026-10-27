@@ -1,50 +1,68 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="vg" data-theme="github" data-style="classic" data-tone="quiet" data-mode="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Ablation · Prompt workbench</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/voyage.css">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/messages.css">
+  <script src="/messages.js" defer></script>
   <script src="/app.js" defer></script>
+  <script src="/voyage-toolbar.js" defer></script>
 </head>
-<body class="focused-workbench">
+<body class="focused-workbench vg-app vg-fullscreen">
   <a class="skip-link" href="#main">跳到实验内容</a>
-  <header class="global-header">
-    <a href="/" class="brand" aria-label="Ablation 首页"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h5m8 8h5M5 5l3 3-3 3m14 2-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>ablation</strong><span class="badge">本地</span></a>
-    <div class="header-actions"><button class="btn" data-action="experiments">实验</button><button class="btn" data-action="import">导入数据</button><button class="btn quiet" id="update-indicator" data-action="updates" hidden>有可用更新</button><button class="btn icon-btn" data-action="settings" aria-label="设置与版本" title="设置与版本"><svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-7 1v4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button></div>
+  <header class="global-header vg-header">
+    <div class="header-start"><button class="vg-iconbtn history-toggle" data-action="toggle-history" aria-controls="session-history" aria-expanded="false" aria-label="展开会话历史" title="展开会话历史"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7 3v14M4.5 6h.5m-.5 3h.5m-.5 3h.5"/></svg></button><a href="/" class="brand" aria-label="Ablation 首页" title="Ablation · 提示词原版与变体对比"><svg class="brand-mark" viewBox="0 0 32 32" width="29" height="29" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="11" height="22" rx="3" opacity=".65"/><path d="M5.5 11h4m-4 5h4m-4 5h4" opacity=".65"/><rect class="brand-variant" x="19" y="5" width="11" height="22" rx="3"/><path class="brand-variant" d="M22.5 11h4m-4 10h4"/><path d="M15 16h2"/></svg><strong>ablation</strong></a></div>
+    <div class="header-actions"><button class="vg-btn btn" data-action="import">导入数据</button><button class="vg-btn btn quiet" id="update-indicator" data-action="updates" hidden>有可用更新</button><div id="voyage-toolbar" aria-label="外观与工具"></div><button class="vg-iconbtn" data-action="settings" aria-label="设置与版本" title="设置与版本"><svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-7 1v4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button></div>
   </header>
   <div id="global-status" class="global-status" role="status" aria-live="polite" hidden></div>
-  <main id="main" tabindex="-1">
+  <div class="vg-main workbench-shell">
+    <aside id="session-history" class="vg-aside session-history" aria-label="会话历史">
+      <div class="session-history-heading vg-grp"><h2>会话历史</h2><span class="count" id="session-count">0</span><button class="text-btn" data-action="refresh-sessions" aria-label="刷新会话历史">刷新</button></div>
+      <div class="session-search"><input class="vg-input" id="session-search" type="search" aria-label="搜索会话标题或 ID" placeholder="搜索标题或 ID" autocomplete="off"></div>
+      <nav id="session-list" aria-label="历史会话列表"><p class="muted-empty">正在读取会话…</p></nav>
+    </aside>
+  <main id="main" class="vg-section" tabindex="-1">
     <section id="empty-state" class="empty-state" hidden>
       <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><path d="M13 7h15l8 8v26H13zM28 7v9h8M19 24h10m-10 6h10m-5-11v10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
       <h1>从一条请求开始，看清每次修改。</h1>
       <p>导入模型请求或日志，对比提示词、测试输入和实际输出。评论与实验保存在同一个工作区。</p>
-      <div class="button-row"><button class="btn primary" data-action="import">导入数据</button><button class="btn" data-action="demo">打开合成示例</button></div>
+      <div class="button-row"><button class="vg-btn btn primary" data-action="import">导入数据</button><button class="vg-btn btn" data-action="demo">打开合成示例</button></div>
       <p class="muted small">示例不调用模型。实际 replay 需要配置推理连接，并由你点击运行。</p>
     </section>
     <section id="experiment" hidden>
       <div class="experiment-heading">
-        <div class="heading-row"><h1 id="experiment-title"></h1><div class="button-row"><button class="text-btn detail-link" data-action="experiment-details">实验详情</button><button class="btn primary" data-action="run">运行比较</button></div></div>
-        <div id="run-log-feed" class="run-log-feed" aria-label="本批测试日志" aria-live="polite" hidden></div>
-        <nav class="page-tabs" aria-label="实验视图"><button class="page-tab" data-tab="diff" aria-current="page">改动</button><button class="page-tab" data-tab="discussion">讨论 <span class="count" id="discussion-count" hidden>0</span></button><button class="page-tab" data-tab="runs">运行记录 <span class="count" id="runs-count" hidden>0</span></button></nav>
+        <div class="heading-row"><div class="experiment-label"><h1 id="experiment-title"></h1><div class="session-identity"><code id="session-id"></code></div></div><nav class="vg-tabs page-tabs" aria-label="实验视图"><button class="vg-tab page-tab" data-tab="diff" aria-current="page">改动</button><button class="vg-tab page-tab" data-tab="discussion">讨论 <span class="count" id="discussion-count" hidden>0</span></button><button class="vg-tab page-tab" data-tab="runs">运行记录 <span class="count" id="runs-count" hidden>0</span></button></nav><div class="button-row"><button class="text-btn detail-link" data-action="experiment-details">实验详情</button><button class="vg-btn btn primary" data-action="run">运行比较</button></div></div>
       </div>
       <div class="experiment-content">
         <div id="active-jobs" aria-live="polite"></div>
         <section id="diff-view">
           <div class="toolbar review-toolbar">
             <nav class="artifact-nav" aria-label="比较内容"><button class="artifact-tab" data-artifact="changes" aria-pressed="true">提示词改动</button><button class="artifact-tab" data-artifact="response" aria-pressed="false">输出结果</button></nav>
-            <div class="button-row"><button class="btn primary" data-action="review">提交评论 <span class="count" id="draft-count" hidden>0</span></button></div>
+            <div class="button-row"><button class="vg-btn btn primary" data-action="review">提交评论 <span class="count" id="draft-count" hidden>0</span></button></div>
           </div>
 
           <div class="workspace-grid"><div class="diff-main"><div id="comparison-status"></div><div id="diff-file" class="diff-file" aria-busy="false"></div><div class="diff-footer"><span>行旁 ＋ 添加评论</span><span id="draft-storage-status">草稿自动保存在当前浏览器</span></div></div></div>
         </section>
         <section id="discussion-view" hidden aria-label="讨论记录"></section>
-        <section id="runs-view" hidden aria-label="运行记录"></section>
+        <section id="runs-view" hidden aria-label="运行记录"><div id="run-records"></div><div id="run-log-feed" class="run-log-feed" aria-label="全部回放日志" hidden></div><div id="run-auxiliary"></div></section>
       </div>
     </section>
   </main>
+  </div>
+  <dialog id="run-drawer" aria-labelledby="run-drawer-title">
+    <header class="run-drawer-header"><div class="run-drawer-heading"><h2 id="run-drawer-title"></h2><p id="run-drawer-context"></p></div><button class="vg-iconbtn" data-action="close-run-drawer" aria-label="关闭回放详情" autofocus><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></header>
+    <label id="run-drawer-switch" class="run-drawer-switch" hidden><span>本批回放</span><select id="run-drawer-select" class="vg-input" aria-label="选择本批回放"></select></label>
+    <div id="run-drawer-meta" class="run-drawer-meta"></div>
+    <nav class="vg-tabs run-drawer-tabs" role="tablist" aria-label="回放详情视图"><button class="vg-tab" data-run-view="messages" role="tab" aria-selected="true" aria-controls="run-drawer-messages">Messages</button><button class="vg-tab" data-run-view="checks" role="tab" aria-selected="false" aria-controls="run-drawer-checks">断言 <span id="run-check-count" class="count">0</span></button><button class="vg-tab" data-run-view="raw" role="tab" aria-selected="false" aria-controls="run-drawer-raw">Raw JSON</button></nav>
+    <div class="run-drawer-content"><section id="run-drawer-messages" role="tabpanel" aria-label="Messages"></section><section id="run-drawer-checks" role="tabpanel" aria-label="断言" tabindex="0" hidden></section><section id="run-drawer-raw" role="tabpanel" aria-label="Raw JSON" tabindex="0" hidden></section></div>
+  </dialog>
   <dialog id="modal" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title"></h2><button class="text-btn" data-action="close-modal" aria-label="关闭对话框">关闭</button></div><div id="modal-body" class="modal-body"></div></dialog>
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="toast" class="vg-toast toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

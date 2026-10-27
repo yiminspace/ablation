@@ -197,7 +197,7 @@ def make_server(workbench, port=0):
                 if not self.valid_local(): self.error(ValueError("Local origin required"), 403); return
                 parsed = urlsplit(self.path)
                 path = parsed.path
-                if path in ("/", "/index.html", "/app.js", "/styles.css"):
+                if path in ("/", "/index.html", "/favicon.svg", "/app.js", "/styles.css", "/theme.js", "/voyage.css", "/voyage-toolbar.js", "/messages.js", "/messages.css", "/bifrost-LICENSE.txt", "/bifrost-NOTICE.txt"):
                     asset = WEB / ("index.html" if path == "/" else path[1:])
                     self.send_bytes(asset.read_bytes(), content_type=(mimetypes.guess_type(asset)[0] or "text/plain") + "; charset=utf-8")
                     return

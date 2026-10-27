@@ -45,6 +45,14 @@ class ServerTests(unittest.TestCase):
             with urlopen(req) as res: return res.status, json.load(res)
         except HTTPError as exc: return exc.code, json.load(exc)
 
+    def test_gui_serves_bundled_theme_without_external_asset_requests(self):
+        for asset, content_type in (("favicon.svg", "image/svg+xml"), ("voyage.css", "text/css"), ("theme.js", "javascript"), ("voyage-toolbar.js", "javascript"), ("messages.js", "javascript"), ("messages.css", "text/css"), ("bifrost-LICENSE.txt", "text/plain"), ("bifrost-NOTICE.txt", "text/plain")):
+            with self.subTest(asset=asset), urlopen(self.url + "/" + asset) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn(content_type, response.headers["Content-Type"])
+                self.assertGreater(len(response.read()), 100)
+                self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
+
     def test_demo_diff_review_reply_survives_service_restart(self):
         status, exp = self.request("/api/demo", {})
         self.assertEqual(status, 200)
