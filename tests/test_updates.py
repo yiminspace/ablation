@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 from ablation_workbench import updates
@@ -15,17 +15,37 @@ class UpdatesTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.workspace = Path(self.temp.name)
-        self.published = patch.object(updates, "RELEASE_PUBLISHED", True)
-        self.published.start()
-        self.addCleanup(self.published.stop)
 
-    def test_unpublished_preview_never_contacts_registry_or_upgrades(self):
-        with patch.object(updates, "RELEASE_PUBLISHED", False), patch.object(updates, "urlopen") as fetch:
-            self.assertEqual("unpublished", updates.update_info(self.workspace, force=True)["status"])
-            self.assertFalse(updates.upgrade_plan()["supported"])
-            with self.assertRaisesRegex(ValueError, "unverified"):
-                updates.perform_upgrade(self.workspace)
-            fetch.assert_not_called()
+    def test_normal_install_checks_registry_without_preview_gate(self):
+        response = BytesIO(json.dumps({"info": {"version": "0.2.0"}}).encode())
+        with patch.object(updates, "_editable", return_value=False), patch.object(updates, "urlopen", return_value=response) as fetch, patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}):
+            result = updates.update_info(self.workspace, force=True)
+        self.assertTrue(result["available"])
+        self.assertEqual("checked", result["status"])
+        self.assertEqual("https://pypi.org/pypi/ablation-workbench/json", fetch.call_args.args[0])
+
+    def test_expired_cache_fetches_new_release(self):
+        responses = [BytesIO(json.dumps({"info": {"version": version}}).encode()) for version in ["0.1.0", "0.2.0"]]
+        with patch.object(updates, "_editable", return_value=False), patch.object(updates, "urlopen", side_effect=responses) as fetch, patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates.time, "time", return_value=1000) as clock:
+            self.assertFalse(updates.update_info(self.workspace)["available"])
+            clock.return_value = 1000 + updates.CACHE_SECONDS + 1
+            self.assertTrue(updates.update_info(self.workspace)["available"])
+        self.assertEqual(2, fetch.call_count)
+
+    def test_background_checker_recovers_and_stops_without_installing(self):
+        stop = Mock()
+        stop.is_set.return_value = False
+        stop.wait.side_effect = [False, True]
+        with patch.object(updates, "update_info", side_effect=[OSError("offline"), {}]) as check, patch.object(updates, "perform_upgrade") as install:
+            updates._update_loop(self.workspace, stop)
+        self.assertEqual(2, check.call_count)
+        install.assert_not_called()
+
+    def test_gui_advertises_explicit_command_and_published_release(self):
+        with patch.object(updates, "update_info", return_value={"latest": "0.2.0", "available": True}), patch.object(updates, "upgrade_plan", return_value={"command": ["pipx", "upgrade", "ablation-workbench"]}):
+            result = updates.gui_update_info(self.workspace)
+        self.assertEqual("pipx upgrade ablation-workbench", result["upgrade_command"])
+        self.assertEqual("https://github.com/yiminspace/ablation/releases/tag/v0.2.0", result["release_url"])
 
     def test_cache_and_explicit_opt_out(self):
         response = BytesIO(json.dumps({"info": {"version": "0.2.0"}}).encode())
@@ -60,6 +80,14 @@ class UpdatesTests(unittest.TestCase):
                 self.assertEqual(manager, plan["manager"])
                 self.assertEqual(f"/bin/{manager}", plan["command"][0])
             path.unlink()
+
+    def test_local_wheel_upgrade_switches_to_registry_requirement(self):
+        (self.workspace / "uv-receipt.toml").touch()
+        distribution = Mock()
+        distribution.read_text.return_value = json.dumps({"url": "file:///temporary/source", "dir_info": {}})
+        with patch.object(updates, "_editable", return_value=False), patch.object(updates, "_distribution", return_value=distribution), patch.object(updates.sys, "prefix", str(self.workspace)), patch.object(updates.shutil, "which", return_value="/bin/uv"):
+            plan = updates.upgrade_plan()
+        self.assertEqual(["/bin/uv", "tool", "install", "--upgrade", "--force", updates.PACKAGE], plan["command"])
 
     def test_active_job_blocks_upgrade(self):
         directory = self.workspace / "jobs"

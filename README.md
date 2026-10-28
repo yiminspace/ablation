@@ -6,19 +6,17 @@ The CLI and browser GUI share one experiment store. The optional Agent skill use
 
 [中文说明](README.zh-CN.md) · [Interface contract](docs/implementation-contract.md) · [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE)
 
-## Install from source
+## Install
 
-Supports macOS and Linux with Python 3.11 or later. The GUI is included; end users do not need Node.js. This development preview is distributed through [GitHub Releases](https://github.com/yiminspace/ablation/releases); it is not published on PyPI.
+Supports macOS and Linux with Python 3.11 or later. The GUI is included; end users do not need Node.js. Versioned releases are distributed through PyPI and [GitHub Releases](https://github.com/yiminspace/ablation/releases). The first PyPI publication requires the repository trusted publisher described in the release checklist.
 
 ```sh
-git clone https://github.com/yiminspace/ablation.git
-cd ablation
-pipx install .
+pipx install ablation-workbench
 ablation --version
 ablation demo --open
 ```
 
-Alternatively, `uv tool install .`, or download the wheel from GitHub Releases and run `uv tool install /path/to/ablation_workbench-0.1.0-py3-none-any.whl`. For development use `python -m venv .venv` followed by `.venv/bin/python -m pip install -e .`.
+Alternatively, `uv tool install ablation-workbench`, or download the wheel from GitHub Releases and run `uv tool install /path/to/ablation_workbench-0.1.0-py3-none-any.whl`. For development use `python -m venv .venv` followed by `.venv/bin/python -m pip install -e .`.
 
 The demo uses synthetic inputs and makes no model requests. Its initial output panel is explicitly untested. It includes an over-specific candidate and a more general candidate to demonstrate comparisons without presenting fabricated performance claims.
 
@@ -182,7 +180,7 @@ The default workspace is `~/.local/share/ablation`; override it with `--workspac
 
 Software versions, experiment schema versions and candidate IDs are separate. Historical request/response records remain unchanged when software updates. Credentials remain in your environment. Exported evidence can contain prompt content and model responses; review the bundle before sharing it.
 
-Update checks in registry-published builds are cached for 24 hours, skip editable installations, and can be disabled with `ABLATION_UPDATE_CHECK=0`. This GitHub preview disables registry checks and upgrades until PyPI ownership and publication are configured. For now, install a reviewed newer wheel from GitHub Releases to update. `ablation update-check` reports availability; an unavailable registry is not proof that the installed version is current. In registry-published builds, `ablation upgrade` shows the installation-aware plan and `ablation upgrade --yes` executes it when no jobs are active. Restart the local GUI after upgrading. The changelog is bundled for offline viewing.
+The GUI checks PyPI in the background, caches checks for 24 hours, and displays a newer version with an installation-aware upgrade command and release-note link. It does not install updates automatically. Editable/source-checkout installations are skipped; set `ABLATION_UPDATE_CHECK=0` to disable checks. `ablation update-check` reports availability, and an unavailable registry is not proof that the installed version is current. `ablation upgrade` shows the installation-aware plan; `ablation upgrade --yes` remains an explicit CLI operation and refuses to run while jobs are active. Restart the local GUI after upgrading. The changelog is bundled for offline viewing.
 
 CLI stdout is JSON except for human review handoffs, changelogs and help. Errors go to stderr. Exit codes: `0` completed command (including unscored replay), `2` invalid input/configuration, `3` replay assertions failed, `4` execution or transport failure, `130` cancelled. Inspect saved per-run evidence even when the command returns nonzero.
 

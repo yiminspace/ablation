@@ -25,7 +25,7 @@
   if (saved?.editor?.anchor && typeof saved.editor.text === 'string') state.editor = saved.editor;
   state.layout = 'split';
   if(['requirements','original'].includes(saved?.grouping))state.grouping=saved.grouping;
-  let sessionQuery = '', lastListAt = 0;
+  let sessionQuery = '', lastListAt = 0, lastUpdateAt = 0;
 
   async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
     const options = {method, headers:{Accept:'application/json'}};
@@ -501,7 +501,7 @@
   }
   function updateValues() {
     const u=state.update || {};
-    return {current:u.current_version || u.installed_version || u.current || u.version || '未知',latest:u.latest_version || u.latest || '',available:Boolean(u.available || u.update_available || u.status==='available'),message:u.message || u.reason || '',status:u.status || ''};
+    return {current:u.current_version || u.installed_version || u.current || u.version || '未知',latest:u.latest_version || u.latest || '',available:Boolean(u.available || u.update_available || u.status==='available'),message:u.message || u.reason || '',status:u.status || '',command:u.upgrade_command || '',releaseUrl:u.release_url || ''};
   }
   function updateIndicator() {
     const u=updateValues();$('#update-indicator').hidden=!u.available;$('#update-indicator').textContent=u.available?`更新 ${u.latest || ''}`:'版本信息';
@@ -516,7 +516,7 @@
     if(results[0].status==='fulfilled')state.update=results[0].value;
     const u=updateValues(),changes=results[1].status==='fulfilled'?results[1].value:null;
     const changelog=typeof changes==='string'?changes:changes?.changelog || changes?.text || changes?.content || '当前安装包未提供更新说明。';
-    $('#modal-body').innerHTML=`<dl class="config-list"><dt>当前版本</dt><dd><strong>${esc(u.current)}</strong></dd><dt>可用版本</dt><dd>${esc(u.latest || '尚未确认')}</dd></dl><p class="dialog-explanation">${esc(u.message || (u.available?'有新版可安装。升级前需结束正在运行的实验和 Agent 任务。':u.status==='up_to_date'?'当前版本已是最新。':'暂未确认有可用更新；本地实验可继续使用。'))}</p>${results[0].status==='rejected'?`<p class="form-error">${esc(results[0].reason.message)}</p>`:''}<h3>What's New</h3><pre class="changelog">${esc(changelog)}</pre>${formError()}${formStatus()}<div class="form-actions"><button class="vg-btn btn" data-action="updates">重新读取</button><button class="vg-btn btn primary" data-action="upgrade" ${u.available?'':'disabled'}>升级工具</button></div><p class="small muted" style="margin-top:12px">升级完成后需重新启动 GUI。实验与评论保存在工作区。</p>`;
+    $('#modal-body').innerHTML=`<dl class="config-list"><dt>当前版本</dt><dd><strong>${esc(u.current)}</strong></dd><dt>可用版本</dt><dd>${esc(u.latest || '尚未确认')}</dd></dl><p class="dialog-explanation">${esc(u.message || (u.available?'有新版可安装。升级前需结束正在运行的实验和 Agent 任务。':(u.status==='up_to_date'||u.status==='checked')?'当前版本已是最新。':'暂未确认有可用更新；本地实验可继续使用。'))}</p>${results[0].status==='rejected'?`<p class="form-error">${esc(results[0].reason.message)}</p>`:''}<h3>What's New</h3><pre class="changelog">${esc(changelog)}</pre>${u.command?`<h3>升级命令</h3><pre>${esc(u.command)}</pre>`:''}${u.releaseUrl?`<p><a href="${esc(u.releaseUrl)}" target="_blank" rel="noopener noreferrer">查看新版发布说明</a></p>`:''}${formError()}${formStatus()}<div class="form-actions"><button class="vg-btn btn" data-action="updates">重新读取</button></div><p class="small muted" style="margin-top:12px">升级完成后需重新启动 GUI。实验与评论保存在工作区。</p>`;
     if(u.current!=='未知')try{localStorage.setItem('ablation.workbench.seenVersion',JSON.stringify(u.current));}catch{}
     state.whatsNew=false;updateIndicator();
   }
@@ -591,6 +591,7 @@
     if(pollRunning||document.hidden||state.busy)return;
     pollRunning=true;
     try {
+      if(Date.now()-lastUpdateAt>60000){lastUpdateAt=Date.now();try{state.update=await api('/api/update');updateIndicator();}catch{}}
       const expId=state.experiment?.id;
       const results=await Promise.allSettled([api('/api/jobs'),expId?api(`/api/experiments/${encodeURIComponent(expId)}`):Promise.resolve(null),Date.now()-lastListAt>10000?refreshList():Promise.resolve()]);
       if(expId!==state.experiment?.id)return;
@@ -742,7 +743,7 @@
     const results=await Promise.allSettled([refreshList(),api('/api/config'),api('/api/jobs'),api('/api/update')]);
     if(results[1].status==='fulfilled')state.config=results[1].value;
     if(results[2].status==='fulfilled')state.jobs=results[2].value.jobs || [];
-    if(results[3].status==='fulfilled'){state.update=results[3].value;updateIndicator();}
+    if(results[3].status==='fulfilled'){lastUpdateAt=Date.now();state.update=results[3].value;updateIndicator();}
     const requested=new URL(location.href).searchParams.get('experiment');
     if(requested)await selectExperiment(requested,false);
     else if(state.experiments.length)await selectExperiment(state.experiments[0].id);

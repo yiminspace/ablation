@@ -31,8 +31,16 @@ async function main(){
   browser=await chromium.launch({headless:true});
   const context=await browser.newContext({viewport:{width:1440,height:1000},permissions:['clipboard-read','clipboard-write']});
   const page=await context.newPage(),pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
+  await page.route('**/api/update',route=>route.fulfill({json:{current:'0.1.0',latest:'9.9.9',available:true,status:'checked',upgrade_command:'pipx upgrade ablation-workbench',release_url:'https://github.com/yiminspace/ablation/releases/tag/v9.9.9'}}));
   await page.goto(url);
   await page.locator('#empty-state').waitFor({state:'visible'});
+  await page.locator('#update-indicator').waitFor({state:'visible'});
+  await page.locator('#update-indicator').click();
+  await page.locator('#modal-body pre').filter({hasText:'pipx upgrade ablation-workbench'}).waitFor();
+  assert.equal(await page.locator('#modal-body [data-action="upgrade"]').count(),0);
+  assert.equal(await page.locator('#modal-body a').filter({hasText:'查看新版发布说明'}).getAttribute('href'),'https://github.com/yiminspace/ablation/releases/tag/v9.9.9');
+  await page.keyboard.press('Escape');
+  await page.unroute('**/api/update');
   await page.locator('#voyage-toolbar .vg-topbar').waitFor();
   assert.equal(await page.locator('#voyage-toolbar .vg-iconbtn').count(),4);
   assert.equal(await page.locator('#voyage-toolbar .vg-iconbtn:disabled').count(),2);

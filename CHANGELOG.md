@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Align releases and update discovery with Quarry: automatically version main commits, publish validated tagged packages to PyPI, and show periodic GUI update notifications with explicit upgrade commands and release notes.
+
 - Group related prompt edits by requirement, with rationale, expected effects and GitHub source links; keep original line diffs and comment anchors available in both views.
 
 - Show only candidate prompt changes in the default diff, with decoded text, line and word differences, collapsed context, without duplicate summaries or replay status; show modification rationale directly below the diff. Keep input history and scenario changes in the full request evidence.
@@ -14,7 +16,7 @@
 
 ## 0.1.0 — development preview
 
-Initial open-source preview, distributed through GitHub Releases. PyPI publication and registry updates remain disabled.
+Initial open-source preview, distributed through GitHub Releases. This preview did not publish to PyPI or enable registry updates.
 
 - Import request files, JSON logs, and HTTP captures into portable experiments, with configurable source endpoints and field mappings.
 - Preserve source evidence, normalization notes, candidates, synthetic scenarios, model outputs, and assertion results.
