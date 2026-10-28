@@ -4,12 +4,10 @@
 
 CLI 与 GUI 使用同一份实验记录。可选 `/ablation` skill 从对话上下文识别已有请求、日志或实验。工具自带数据转换和 replay，可以直接使用 CLI，也可以由 Agent 配合 skill 操作。
 
-这是通过 [GitHub Releases](https://github.com/yiminspace/ablation/releases) 分发的开发预览，尚未发布到 PyPI。支持 macOS / Linux，需要 Python 3.11+。从源码安装：
+正式发行包通过 PyPI 和 GitHub Releases 分发。安装和更新行为见下文“安装、数据与更新”。
 
 ```sh
-git clone https://github.com/yiminspace/ablation.git
-cd ablation
-uv tool install .
+uv tool install ablation-workbench
 ablation demo --open
 ```
 
@@ -69,7 +67,7 @@ GUI 随工具打包，不需要安装 Node。`skills/ablation` 可以手工安�
 
 工作区默认在 `~/.local/share/ablation`，可用 `--workspace` 指定。实验和评论存储在本地，支持导出导入；导出文件可能包含原始提示词和模型响应，共享前检查内容。
 
-发布到包仓库的版本支持有缓存、可关闭的后台更新检查；升级由用户点击或命令触发，运行中的任务完成后再升级。当前 GitHub 预览包禁用包仓库检查和升级，待 PyPI 归属与发布配置完成后再启用；现在可从 GitHub Releases 安装新版 wheel。升级不覆盖历史证据，工具版本、数据格式版本与候选版本分别记录。
+正式发行包通过 PyPI 和 GitHub Releases 分发。GUI 后台定期检查线上版本，检查结果缓存 24 小时；发现新版后显示升级命令和发布说明，不会自动安装。源码或 editable 安装跳过检查，`ABLATION_UPDATE_CHECK=0` 可关闭检查。首次发布需要配置 PyPI trusted publisher，见发布检查清单。
 
 项目采用 [MIT](LICENSE)，源码位于 [yiminspace/ablation](https://github.com/yiminspace/ablation)。
 

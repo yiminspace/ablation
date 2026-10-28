@@ -8,13 +8,15 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
+import threading
 import subprocess
 import sys
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from . import RELEASE_PUBLISHED, __version__
+from . import __version__
 from .installation import installation_upgrade
 from .runner import ACTIVE, _alive, _write, workspace_lock
 
@@ -40,6 +42,17 @@ def _editable():
         return False
 
 
+def _local_source():
+    distribution = _distribution()
+    if distribution is None:
+        return False
+    try:
+        data = json.loads(distribution.read_text("direct_url.json") or "{}")
+        return str(data.get("url", "")).startswith("file:")
+    except (ValueError, OSError):
+        return False
+
+
 def _version_tuple(value):
     if not isinstance(value, str) or not re.fullmatch(r"\d+\.\d+\.\d+", value):
         return None
@@ -48,8 +61,6 @@ def _version_tuple(value):
 
 def update_info(workspace, *, force=False):
     base = {"schema_version": 1, "current": __version__, "latest": None, "available": False}
-    if not RELEASE_PUBLISHED:
-        return {**base, "status": "unpublished", "reason": "Development preview; package registry publication is disabled"}
     if os.environ.get("ABLATION_UPDATE_CHECK") == "0":
         return {**base, "status": "disabled", "reason": "Disabled by ABLATION_UPDATE_CHECK=0"}
     if _editable():
@@ -83,23 +94,48 @@ def update_info(workspace, *, force=False):
         return result
 
 
+def gui_update_info(workspace):
+    result = update_info(workspace)
+    plan = upgrade_plan()
+    latest = result.get("latest")
+    return {
+        **result,
+        "upgrade_command": shlex.join(plan["command"]) if plan.get("command") else "",
+        "release_url": f"https://github.com/yiminspace/ablation/releases/tag/v{latest}" if _version_tuple(latest) else None,
+    }
+
+
+def _update_loop(workspace, stop):
+    while not stop.is_set():
+        try:
+            update_info(workspace)
+        except (OSError, ValueError, RuntimeError):
+            pass
+        if stop.wait(3600):
+            return
+
+
+def start_update_checker(workspace, stop):
+    thread = threading.Thread(target=_update_loop, args=(workspace, stop), name="ablation-update-checker", daemon=True)
+    thread.start()
+    return thread
+
+
 def upgrade_plan():
     base = {"schema_version": 1, "package": PACKAGE, "current": __version__, "supported": False,
             "command": None, "restart_required": True}
-    if not RELEASE_PUBLISHED:
-        return {**base, "manager": "unpublished", "reason": "Development preview cannot upgrade from an unverified package registry name"}
     if _editable():
         return {**base, "manager": "source", "reason": "Update the source checkout; automatic upgrade is disabled"}
     prefix = Path(sys.prefix)
     if (prefix / "pipx_metadata.json").exists() or "pipx" in prefix.parts:
         executable = shutil.which("pipx")
         return {**base, "manager": "pipx", "supported": bool(executable),
-                "command": [executable, "upgrade", PACKAGE] if executable else None,
+                "command": ([executable, "install", "--force", PACKAGE] if _local_source() else [executable, "upgrade", PACKAGE]) if executable else None,
                 "reason": "" if executable else "pipx executable not found"}
     if (prefix / "uv-receipt.toml").exists() or ("uv" in prefix.parts and "tools" in prefix.parts):
         executable = shutil.which("uv")
         return {**base, "manager": "uv", "supported": bool(executable),
-                "command": [executable, "tool", "upgrade", PACKAGE] if executable else None,
+                "command": ([executable, "tool", "install", "--upgrade", "--force", PACKAGE] if _local_source() else [executable, "tool", "upgrade", PACKAGE]) if executable else None,
                 "reason": "" if executable else "uv executable not found"}
     return {**base, "manager": "pip", "supported": True,
             "command": [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE]}

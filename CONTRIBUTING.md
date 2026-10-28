@@ -14,16 +14,10 @@ CLI and GUI share the experiment engine. Changes to experiment formats need a mi
 
 Use conventional commit titles (`feat:`, `fix:`, `docs:`, `test:`, `chore:`) and describe observable behavior and validation in pull requests. Update `CHANGELOG.md` for user-visible changes.
 
-## Release review
+## Releases
 
-The source and development-preview distributions are published through GitHub Releases. PyPI publication remains disabled by default. Before registry publication, confirm package ownership and configure the trusted publisher. Build and inspect the wheel and sdist, run tests from the wheel in a clean virtual environment, and review the bundled public skill and synthetic fixtures.
+Main commits use conventional commit titles. Semantic Release automatically updates the package version and changelog, creates the matching tag and GitHub Release, and dispatches the PyPI publication workflow, following Quarry's release pipeline.
 
-The version-preparation workflow runs manually and derives a version and changelog from conventional commits. It saves a reviewable patch and distribution artifacts, with commit, tag, push, and release creation disabled. The equivalent local command, with `python-semantic-release==10.5.3` installed in a development environment, is:
+Publication validates that exact tag through CI, builds the bundled UI and Python distributions, and rejects a package/tag mismatch before uploading. Manual dispatch remains available for an exact tag or a one-off forced version bump. Before the first publication, configure the `ablation-workbench` PyPI trusted publisher for `yiminspace/ablation`, `release.yml`, and the GitHub `pypi` environment. A local build does not publish anything.
 
-```sh
-semantic-release version --no-commit --no-tag --no-push --no-vcs-release --skip-build
-```
-
-After reviewing and adopting the prepared version, create its matching tag. The separate publication workflow only runs manually for that exact tag, requires the repository variable `ABLATION_PUBLIC_RELEASE=enabled`, and uses a `public-release` environment. Configure required reviewers and the package registry's trusted-publisher identity before enabling it. A passing local build does not publish anything. Skill installation or synchronization is not performed by package upgrades.
-
-Source and GitHub preview builds contain `RELEASE_PUBLISHED = False`, disabling registry checks and upgrades even when installed from a wheel. Only the approved registry-publication workflow changes that distribution marker while building the PyPI package. This prevents a provisional package name from resolving to an unrelated registry owner.
+Installed GUIs check PyPI in the background and show the upgrade command and release notes. They never install an update automatically. Source/editable installs skip checks; `ABLATION_UPDATE_CHECK=0` disables them. Restart the GUI after upgrading. Package upgrades do not install or synchronize personal skills. Release verification details are in [the release checklist](docs/release-review.md).

@@ -1,36 +1,65 @@
-name: Prepare version for review
+name: Semantic Release
+
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Force bump level for one-off backfill release"
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - patch
+          - minor
+          - major
+
 permissions:
   contents: read
+
 jobs:
-  version:
+  release:
     runs-on: ubuntu-latest
     concurrency:
-      group: ablation-version
+      group: ${{ github.workflow }}-${{ github.ref_name }}
       cancel-in-progress: false
+    permissions:
+      actions: write
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout release branch
+        uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          ref: ${{ github.ref_name }}
+
+      - name: Force release branch to workflow SHA
+        run: git reset --hard ${{ github.sha }}
+
+      - name: Semantic release (automatic bump)
+        id: automatic
+        if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.force != 'none') }}
+        uses: python-semantic-release/python-semantic-release@v10.5.3
         with:
-          python-version: '3.11'
-      - run: python -m unittest discover -s tests -v
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          git_committer_name: github-actions
+          git_committer_email: actions@users.noreply.github.com
+
+      - name: Semantic release (forced bump)
+        id: forced
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force != 'none' }}
+        uses: python-semantic-release/python-semantic-release@v10.5.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          force: ${{ github.event.inputs.force }}
+          git_committer_name: github-actions
+          git_committer_email: actions@users.noreply.github.com
+
+      - name: Dispatch PyPI publication
+        if: ${{ steps.automatic.outputs.released == 'true' || steps.forced.outputs.released == 'true' }}
         env:
-          PYTHONPATH: src
-          ABLATION_UPDATE_CHECK: '0'
-      - run: python -m pip install python-semantic-release==10.5.3 build
-      - name: Derive version and changelog without committing, tagging, or publishing
-        run: semantic-release version --no-commit --no-tag --no-push --no-vcs-release --skip-build
-      - run: python -m build
-      - name: Save the reviewable patch
-        run: git diff --binary > release-preparation.patch
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-preparation
-          path: |
-            release-preparation.patch
-            CHANGELOG.md
-            dist/*
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.automatic.outputs.tag || steps.forced.outputs.tag }}
+        run: gh workflow run release.yml --ref "$RELEASE_TAG" -f tag="$RELEASE_TAG"

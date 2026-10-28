@@ -23,7 +23,7 @@
 | 交接 | 保存并复制到当前对话；或提交给已配置的 Codex / 自定义本地 Agent，记录状态与结果 |
 | 行为区分 | “追问解释”只解释；“请求修改”才进行实验改动和所请求的验证；回放不执行模型返回的工具 |
 | 持久化 | 本地工作区、bundle 导入导出、失败和中断恢复；关闭 GUI 只取消它自己发起的任务 |
-| 工具更新 | 缓存版本检查、离线更新说明、显式升级、跨工作区活动锁；预览包禁用线上检查与升级 |
+| 工具更新 | 后台缓存版本检查、升级命令与发布说明；用户显式升级，跨工作区活动锁保护运行任务 |
 | 分发 | macOS / Linux、Python 3.11+、零运行时第三方依赖；GUI 和可手工安装的 skill 随 wheel 打包 |
 
 ## 已完成验证
@@ -53,8 +53,12 @@
 - Codex 命令与权限设置已核对，事件解析、会话选择、取消和回复写回用替身验证；未真正启动付费模型会话。它管理独立 CLI 会话，不会自动唤醒当前桌面聊天。
 - Windows 不在首版支持范围；跨平台运行结果以 GitHub CI 为准。
 - 没有执行真实软件升级或 PyPI 发布。
-- `ablation-workbench` 的 PyPI 所有权及 trusted publisher 尚未配置；GitHub 预览包始终禁用向该注册表名称升级。
+- 首次 PyPI 发布前，需要确认 `ablation-workbench` 的包名所有权，并配置 trusted publisher；本地检查不证明这些外部设置已完成。
 
-## 后续包仓库发布
+## 版本发布与本地更新
 
-GitHub 预览与 PyPI 发布分别管理。PyPI 发布 workflow 仅手动触发，还需要仓库变量开关、匹配版本标签及配置好的 `public-release` environment；必须实际设置环境审批者和 PyPI trusted publisher，不能仅依赖 YAML 中的 environment 名称。
+与 Quarry 一致，main 上的提交由 Semantic Release 自动递增版本、生成 changelog 和 GitHub Release，并显式派发 PyPI 发布 workflow。发布 workflow 使用确定的 tag，先对该 tag 运行 CI，再构建 UI 和 Python 发行包，核对包版本与 tag 后发布。
+
+首次发布需要在 PyPI 为 `ablation-workbench` 配置 GitHub trusted publisher：仓库 `yiminspace/ablation`、workflow `release.yml`、environment `pypi`。GitHub 中需存在对应 environment。后续正常发布不需要预览版开关或人工输入确认文字。
+
+GUI 后台检查 PyPI，检查结果缓存 24 小时；发现新版后显示当前/最新版本、升级命令和发布说明。用户执行升级命令后重新启动 GUI。源码或 editable 安装不检查注册表，`ABLATION_UPDATE_CHECK=0` 可关闭检查。本机若仍绑定本地源码安装，需要在首个线上发行版可用后改为从 PyPI 安装。

@@ -206,8 +206,8 @@ def make_server(workbench, port=0):
                 elif path == "/api/config": result = public_config(workbench.workspace)
                 elif path == "/api/jobs": result = {"jobs": jobs.list() + agent.list_jobs()}
                 elif path == "/api/update":
-                    from .updates import update_info
-                    result = update_info(workbench.workspace)
+                    from .updates import gui_update_info
+                    result = gui_update_info(workbench.workspace)
                 elif path == "/api/changelog":
                     from .updates import changelog
                     result = {"text": changelog()}
@@ -297,8 +297,13 @@ def serve(workbench, experiment_id=None, port=0, open_browser=True):
     url = f"http://127.0.0.1:{server.server_port}/" + (f"?experiment={experiment_id}" if experiment_id else "")
     print(json.dumps({"url": url, "workspace": str(workbench.workspace)}), flush=True)
     if open_browser: webbrowser.open(url)
+    from .updates import start_update_checker
+    update_stop = threading.Event()
+    update_thread = start_update_checker(workbench.workspace, update_stop)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally:
+        update_stop.set()
+        update_thread.join(timeout=4)
         close_jobs(server)
         server.server_close()
