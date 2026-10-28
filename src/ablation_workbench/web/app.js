@@ -25,7 +25,8 @@
   if (saved?.editor?.anchor && typeof saved.editor.text === 'string') state.editor = saved.editor;
   state.layout = 'split';
   if(['requirements','original'].includes(saved?.grouping))state.grouping=saved.grouping;
-  let sessionQuery = '', lastListAt = 0, lastUpdateAt = 0;
+  let sessionQuery = '', lastListAt = 0;
+  let updateEvents=null, loadedVersion=null, updateRequest=0;
 
   async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
     const options = {method, headers:{Accept:'application/json'}};
@@ -503,6 +504,37 @@
     const u=state.update || {};
     return {current:u.current_version || u.installed_version || u.current || u.version || '未知',latest:u.latest_version || u.latest || '',available:Boolean(u.available || u.update_available || u.status==='available'),message:u.message || u.reason || '',status:u.status || '',command:u.upgrade_command || '',releaseUrl:u.release_url || ''};
   }
+  async function refreshUpdateInfo() {
+    const request=++updateRequest;
+    try {
+      const info=await api('/api/update');
+      if(request===updateRequest){state.update=info;updateIndicator();}
+    } catch {}
+  }
+  async function checkServerVersion() {
+    try {
+      const {version}=await api('/api/version');
+      if(typeof version!=='string')return;
+      if(loadedVersion===null)loadedVersion=version;
+      if(version!==loadedVersion){$('#upgrade-version').textContent=version;$('#upgrade-banner').hidden=false;}
+    } catch {}
+  }
+  function startUpdateEvents() {
+    if(updateEvents || !window.EventSource)return;
+    const source=new EventSource('/api/events');
+    updateEvents=source;
+    source.onopen=()=>{
+      if(updateEvents!==source)return;
+      checkServerVersion();refreshUpdateInfo();
+    };
+    source.onmessage=event=>{
+      if(updateEvents!==source)return;
+      try {if(JSON.parse(event.data).type==='update_available')refreshUpdateInfo();} catch {}
+    };
+  }
+  function stopUpdateEvents() {
+    updateEvents?.close();updateEvents=null;
+  }
   function updateIndicator() {
     const u=updateValues();$('#update-indicator').hidden=!u.available;$('#update-indicator').textContent=u.available?`更新 ${u.latest || ''}`:'版本信息';
     const seen=readStorage('ablation.workbench.seenVersion');
@@ -591,7 +623,6 @@
     if(pollRunning||document.hidden||state.busy)return;
     pollRunning=true;
     try {
-      if(Date.now()-lastUpdateAt>60000){lastUpdateAt=Date.now();try{state.update=await api('/api/update');updateIndicator();}catch{}}
       const expId=state.experiment?.id;
       const results=await Promise.allSettled([api('/api/jobs'),expId?api(`/api/experiments/${encodeURIComponent(expId)}`):Promise.resolve(null),Date.now()-lastListAt>10000?refreshList():Promise.resolve()]);
       if(expId!==state.experiment?.id)return;
@@ -644,6 +675,7 @@
         case 'experiment-details':experimentDetails();break;
 
         case 'updates':await updatesModal();break;
+        case 'reload-ui':persist();location.reload();break;
         case 'close-modal':closeModal();break;
         case 'retry-diff':await loadDiff();break;
         case 'expand-diff':state.expanded=true;renderDiff();break;
@@ -737,13 +769,17 @@
   document.addEventListener('focusout',()=>setTimeout(()=>{if(state.deferred&&!editing()){state.deferred=false;renderExperiment();loadDiff();}},0));
   window.addEventListener('popstate',()=>{const exp=new URL(location.href).searchParams.get('experiment');if(exp)selectExperiment(exp,false);});
   window.addEventListener('beforeunload',()=>persist());
+  window.addEventListener('pagehide',()=>{persist();stopUpdateEvents();});
+  window.addEventListener('pageshow',event=>{if(event.persisted)startUpdateEvents();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
 
   async function boot() {
-    const results=await Promise.allSettled([refreshList(),api('/api/config'),api('/api/jobs'),api('/api/update')]);
+    const results=await Promise.allSettled([refreshList(),api('/api/config'),api('/api/jobs'),api('/api/update'),api('/api/version')]);
     if(results[1].status==='fulfilled')state.config=results[1].value;
     if(results[2].status==='fulfilled')state.jobs=results[2].value.jobs || [];
-    if(results[3].status==='fulfilled'){lastUpdateAt=Date.now();state.update=results[3].value;updateIndicator();}
+    if(results[3].status==='fulfilled'){state.update=results[3].value;updateIndicator();}
+    if(results[4].status==='fulfilled')loadedVersion=results[4].value.version;
+    startUpdateEvents();
     const requested=new URL(location.href).searchParams.get('experiment');
     if(requested)await selectExperiment(requested,false);
     else if(state.experiments.length)await selectExperiment(state.experiments[0].id);

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib import metadata, resources
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -22,6 +23,7 @@ from .runner import ACTIVE, _alive, _write, workspace_lock
 
 PACKAGE = "ablation-workbench"
 CACHE_SECONDS = 24 * 60 * 60
+_CHECK_LOCK = threading.Lock()
 
 
 def _distribution():
@@ -59,21 +61,48 @@ def _version_tuple(value):
     return tuple(int(part) for part in value.split("."))
 
 
-def update_info(workspace, *, force=False):
+def cached_update_info(workspace):
     base = {"schema_version": 1, "current": __version__, "latest": None, "available": False}
     if os.environ.get("ABLATION_UPDATE_CHECK") == "0":
         return {**base, "status": "disabled", "reason": "Disabled by ABLATION_UPDATE_CHECK=0"}
     if _editable():
         return {**base, "status": "disabled", "reason": "Source or editable installation"}
-    path = Path(workspace) / ".update-cache.json"
-    with workspace_lock(workspace):
+    try:
+        cached = json.loads((Path(workspace) / ".update-cache.json").read_text())
+    except (OSError, ValueError):
+        cached = {}
+    if not isinstance(cached, dict):
+        cached = {}
+    latest = cached.get("latest")
+    if _version_tuple(latest) is not None:
+        base.update(latest=latest, available=_version_tuple(latest) > _version_tuple(__version__))
+    status = cached.get("status")
+    base["status"] = status if status in ("checked", "unavailable") else "unknown"
+    if status == "checked" and _version_tuple(latest) is None:
+        base["status"] = "unknown"
+    checked_at = cached.get("checked_at")
+    if base["status"] != "unknown" and isinstance(checked_at, (int, float)) and not isinstance(checked_at, bool):
         try:
-            cached = json.loads(path.read_text())
-        except (OSError, ValueError):
-            cached = {}
-        if not force and cached.get("current") == __version__ and 0 <= time.time() - cached.get("checked_at", 0) < CACHE_SECONDS:
+            timestamp = float(checked_at)
+            if math.isfinite(timestamp):
+                base["checked_at"] = timestamp
+        except OverflowError:
+            pass
+    if isinstance(cached.get("reason"), str):
+        base["reason"] = cached["reason"]
+    return base
+
+
+def update_info(workspace, *, force=False):
+    with _CHECK_LOCK:
+        cached = cached_update_info(workspace)
+        if cached["status"] == "disabled":
             return cached
-        result = {**base, "checked_at": time.time()}
+        checked_at = cached.get("checked_at")
+        if not force and checked_at is not None and 0 <= time.time() - checked_at < CACHE_SECONDS:
+            return cached
+        result = {**cached, "checked_at": time.time()}
+        result.pop("reason", None)
         try:
             with urlopen(f"https://pypi.org/pypi/{PACKAGE}/json", timeout=3) as response:
                 raw = response.read(2_000_001)
@@ -90,12 +119,13 @@ def update_info(workspace, *, force=False):
             result.update(status="unavailable", reason="Package is not published" if error.code == 404 else "Registry unavailable")
         except (URLError, OSError, ValueError, KeyError, TypeError):
             result.update(status="unavailable", reason="Update information could not be retrieved")
-        _write(path, result)
+        with workspace_lock(workspace):
+            _write(Path(workspace) / ".update-cache.json", result)
         return result
 
 
 def gui_update_info(workspace):
-    result = update_info(workspace)
+    result = cached_update_info(workspace)
     plan = upgrade_plan()
     latest = result.get("latest")
     return {
@@ -105,18 +135,23 @@ def gui_update_info(workspace):
     }
 
 
-def _update_loop(workspace, stop):
+def _update_loop(workspace, stop, on_update=None):
+    announced = None
     while not stop.is_set():
         try:
-            update_info(workspace)
+            result = update_info(workspace)
+            if result.get("available") and result.get("latest") != announced:
+                if on_update is not None:
+                    on_update()
+                announced = result["latest"]
         except (OSError, ValueError, RuntimeError):
             pass
         if stop.wait(3600):
             return
 
 
-def start_update_checker(workspace, stop):
-    thread = threading.Thread(target=_update_loop, args=(workspace, stop), name="ablation-update-checker", daemon=True)
+def start_update_checker(workspace, stop, on_update=None):
+    thread = threading.Thread(target=_update_loop, args=(workspace, stop, on_update), name="ablation-update-checker", daemon=True)
     thread.start()
     return thread
 

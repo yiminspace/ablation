@@ -2,7 +2,7 @@
   "name": "ablation-browser-verification",
   "private": true,
   "scripts": {
-    "test:browser": "node tests/browser_smoke.cjs",
+    "test:browser": "node tests/browser_smoke.cjs && node tests/browser_updates.cjs",
     "vendor:voyage": "node scripts/vendor-voyage.cjs",
     "check:styles": "node scripts/vendor-voyage.cjs --check",
     "build:ui": "node scripts/vendor-voyage.cjs && node scripts/build-ui.cjs",

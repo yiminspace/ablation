@@ -64,7 +64,7 @@ jobs:
       - run: npm run check:ui
       - run: npm run test:ui
       - run: npx playwright install --with-deps chromium
-      - run: node tests/browser_smoke.cjs
+      - run: npm run test:browser
         env:
           PYTHONPATH: src
           ABLATION_UPDATE_CHECK: '0'

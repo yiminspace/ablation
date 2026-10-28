@@ -67,7 +67,7 @@ GUI 随工具打包，不需要安装 Node。`skills/ablation` 可以手工安�
 
 工作区默认在 `~/.local/share/ablation`，可用 `--workspace` 指定。实验和评论存储在本地，支持导出导入；导出文件可能包含原始提示词和模型响应，共享前检查内容。
 
-正式发行包通过 PyPI 和 GitHub Releases 分发。GUI 后台定期检查线上版本，检查结果缓存 24 小时；发现新版后显示升级命令和发布说明，不会自动安装。源码或 editable 安装跳过检查，`ABLATION_UPDATE_CHECK=0` 可关闭检查。首次发布需要配置 PyPI trusted publisher，见发布检查清单。
+正式发行包通过 PyPI 和 GitHub Releases 分发。GUI 后台定期检查线上版本，检查结果缓存 24 小时；页面只读缓存，查询慢或断网不会阻塞界面，失败时保留上次已知版本。发现新版后通过 SSE 通知页面，显示升级命令和发布说明，不会自动安装。升级并重启 GUI 后，原页面自动重连并提示刷新，避免打断编辑。源码或 editable 安装跳过检查，`ABLATION_UPDATE_CHECK=0` 可关闭检查。首次发布需要配置 PyPI trusted publisher，见发布检查清单。
 
 项目采用 [MIT](LICENSE)，源码位于 [yiminspace/ablation](https://github.com/yiminspace/ablation)。
 

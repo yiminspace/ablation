@@ -1,4 +1,5 @@
 /* Product-specific diff layout uses Voyage's shared GitHub tokens. */
+.upgrade-banner:not([hidden]){display:flex;flex:none;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 16px;padding:10px 18px;background:var(--blue-bg);color:var(--fg);border-bottom:1px solid var(--border)}
 :root.vg {
   --bg:var(--bg1); --subtle:var(--surf-1); --muted:var(--fg3);
   --border:var(--line-c,var(--line)); --blue:var(--acc); --blue-bg:var(--sel-bg);
