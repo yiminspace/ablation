@@ -15,9 +15,11 @@ class UpdatesTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.workspace = Path(self.temp.name)
+        major, minor, patch_version = map(int, updates.__version__.split("."))
+        self.next_version = f"{major}.{minor}.{patch_version + 1}"
 
     def test_normal_install_checks_registry_without_preview_gate(self):
-        response = BytesIO(json.dumps({"info": {"version": "0.2.0"}}).encode())
+        response = BytesIO(json.dumps({"info": {"version": self.next_version}}).encode())
         with patch.object(updates, "_editable", return_value=False), patch.object(updates, "urlopen", return_value=response) as fetch, patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}):
             result = updates.update_info(self.workspace, force=True)
         self.assertTrue(result["available"])
@@ -25,7 +27,7 @@ class UpdatesTests(unittest.TestCase):
         self.assertEqual("https://pypi.org/pypi/ablation-workbench/json", fetch.call_args.args[0])
 
     def test_expired_cache_fetches_new_release(self):
-        responses = [BytesIO(json.dumps({"info": {"version": version}}).encode()) for version in ["0.1.0", "0.2.0"]]
+        responses = [BytesIO(json.dumps({"info": {"version": version}}).encode()) for version in [updates.__version__, self.next_version]]
         with patch.object(updates, "_editable", return_value=False), patch.object(updates, "urlopen", side_effect=responses) as fetch, patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates.time, "time", return_value=1000) as clock:
             self.assertFalse(updates.update_info(self.workspace)["available"])
             clock.return_value = 1000 + updates.CACHE_SECONDS + 1
@@ -42,13 +44,13 @@ class UpdatesTests(unittest.TestCase):
         install.assert_not_called()
 
     def test_gui_advertises_explicit_command_and_published_release(self):
-        with patch.object(updates, "update_info", return_value={"latest": "0.2.0", "available": True}), patch.object(updates, "upgrade_plan", return_value={"command": ["pipx", "upgrade", "ablation-workbench"]}):
+        with patch.object(updates, "update_info", return_value={"latest": self.next_version, "available": True}), patch.object(updates, "upgrade_plan", return_value={"command": ["pipx", "upgrade", "ablation-workbench"]}):
             result = updates.gui_update_info(self.workspace)
         self.assertEqual("pipx upgrade ablation-workbench", result["upgrade_command"])
-        self.assertEqual("https://github.com/yiminspace/ablation/releases/tag/v0.2.0", result["release_url"])
+        self.assertEqual(f"https://github.com/yiminspace/ablation/releases/tag/v{self.next_version}", result["release_url"])
 
     def test_cache_and_explicit_opt_out(self):
-        response = BytesIO(json.dumps({"info": {"version": "0.2.0"}}).encode())
+        response = BytesIO(json.dumps({"info": {"version": self.next_version}}).encode())
         with patch.object(updates, "_editable", return_value=False), patch.object(updates, "urlopen", return_value=response) as fetch, patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}):
             first = updates.update_info(self.workspace)
             second = updates.update_info(self.workspace)
