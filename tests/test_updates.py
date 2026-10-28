@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
@@ -44,10 +45,88 @@ class UpdatesTests(unittest.TestCase):
         install.assert_not_called()
 
     def test_gui_advertises_explicit_command_and_published_release(self):
-        with patch.object(updates, "update_info", return_value={"latest": self.next_version, "available": True}), patch.object(updates, "upgrade_plan", return_value={"command": ["pipx", "upgrade", "ablation-workbench"]}):
+        with patch.object(updates, "cached_update_info", return_value={"latest": self.next_version, "available": True}), patch.object(updates, "upgrade_plan", return_value={"command": ["pipx", "upgrade", "ablation-workbench"]}):
             result = updates.gui_update_info(self.workspace)
         self.assertEqual("pipx upgrade ablation-workbench", result["upgrade_command"])
         self.assertEqual(f"https://github.com/yiminspace/ablation/releases/tag/v{self.next_version}", result["release_url"])
+
+    def test_gui_cache_is_read_only_and_recomputes_availability_after_upgrade(self):
+        path = self.workspace / ".update-cache.json"
+        path.write_text(json.dumps({"current": "0.0.1", "latest": updates.__version__, "available": True,
+                                    "status": "checked", "checked_at": 0}))
+        original = path.read_bytes()
+        with patch.object(updates, "_editable", return_value=False), patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates, "urlopen") as fetch:
+            result = updates.gui_update_info(self.workspace)
+        self.assertEqual(updates.__version__, result["current"])
+        self.assertFalse(result["available"])
+        self.assertEqual(original, path.read_bytes())
+        fetch.assert_not_called()
+
+    def test_empty_or_malformed_gui_cache_never_fetches(self):
+        with patch.object(updates, "_editable", return_value=False), patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates, "urlopen") as fetch:
+            for contents in [None, "broken", "[]", "null"]:
+                with self.subTest(contents=contents):
+                    if contents is not None:
+                        (self.workspace / ".update-cache.json").write_text(contents)
+                    result = updates.gui_update_info(self.workspace)
+                    self.assertEqual("unknown", result["status"])
+                    self.assertFalse(result["available"])
+            fetch.assert_not_called()
+
+    def test_offline_check_retains_last_known_release_and_throttles_retries(self):
+        (self.workspace / ".update-cache.json").write_text(json.dumps({"latest": self.next_version, "status": "checked", "checked_at": 0}))
+        with patch.object(updates, "_editable", return_value=False), patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates, "urlopen", side_effect=OSError("offline")) as fetch:
+            result = updates.update_info(self.workspace)
+            self.assertEqual("unavailable", result["status"])
+            self.assertEqual(self.next_version, result["latest"])
+            self.assertTrue(result["available"])
+            self.assertEqual(result, updates.update_info(self.workspace))
+            self.assertEqual(1, fetch.call_count)
+
+    def test_slow_registry_does_not_hold_workspace_lock_or_block_gui_reads(self):
+        entered, release = threading.Event(), threading.Event()
+        failures = []
+        def fetch(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("test did not release registry")
+            return BytesIO(json.dumps({"info": {"version": self.next_version}}).encode())
+        def check():
+            try:
+                updates.update_info(self.workspace, force=True)
+            except Exception as exc:
+                failures.append(exc)
+        with patch.object(updates, "_editable", return_value=False), patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates, "urlopen", side_effect=fetch):
+            thread = threading.Thread(target=check)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertEqual("unknown", updates.gui_update_info(self.workspace)["status"])
+                acquired = threading.Event()
+                def edit():
+                    with updates.workspace_lock(self.workspace):
+                        acquired.set()
+                editor = threading.Thread(target=edit)
+                editor.start()
+                try:
+                    self.assertTrue(acquired.wait(2))
+                finally:
+                    release.set()
+                    editor.join(3)
+            finally:
+                release.set()
+                thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual([], failures)
+
+    def test_background_checker_announces_each_new_release_once(self):
+        stop, announce = Mock(), Mock()
+        stop.is_set.return_value = False
+        stop.wait.side_effect = [False, False, True]
+        result = {"available": True, "latest": self.next_version}
+        with patch.object(updates, "update_info", return_value=result):
+            updates._update_loop(self.workspace, stop, announce)
+        announce.assert_called_once_with()
 
     def test_cache_and_explicit_opt_out(self):
         response = BytesIO(json.dumps({"info": {"version": self.next_version}}).encode())

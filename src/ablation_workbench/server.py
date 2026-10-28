@@ -15,7 +15,9 @@ import uuid
 import webbrowser
 
 from .cli import read_config
+from . import __version__
 from .demo import create_demo
+from .events import UpdateEvents
 from .installation import installation_activity
 from .runner import AgentRunner, workspace_lock
 
@@ -144,6 +146,7 @@ def make_server(workbench, port=0):
     agent = AgentRunner(workbench)
     jobs = ReplayJobs(workbench)
     owned_agent_jobs = set()
+    updates = UpdateEvents()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "Ablation"
@@ -192,11 +195,33 @@ def make_server(workbench, port=0):
             if not isinstance(value, dict): raise ValueError("Request body must be a JSON object")
             return value
 
+        def send_events(self):
+            revision = updates.revision()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.close_connection = True
+            try:
+                self.wfile.write(b"retry: 1000\n\n")
+                self.wfile.flush()
+                while (latest := updates.wait(revision)) is not None:
+                    frame = b'data: {"type":"update_available"}\n\n' if latest != revision else b": heartbeat\n\n"
+                    self.wfile.write(frame)
+                    self.wfile.flush()
+                    revision = latest
+            except OSError:
+                pass
+
         def do_GET(self):
             try:
                 if not self.valid_local(): self.error(ValueError("Local origin required"), 403); return
                 parsed = urlsplit(self.path)
                 path = parsed.path
+                if path == "/api/events":
+                    self.send_events()
+                    return
                 if path in ("/", "/index.html", "/favicon.svg", "/app.js", "/styles.css", "/theme.js", "/voyage.css", "/voyage-toolbar.js", "/messages.js", "/messages.css", "/bifrost-LICENSE.txt", "/bifrost-NOTICE.txt"):
                     asset = WEB / ("index.html" if path == "/" else path[1:])
                     self.send_bytes(asset.read_bytes(), content_type=(mimetypes.guess_type(asset)[0] or "text/plain") + "; charset=utf-8")
@@ -205,6 +230,7 @@ def make_server(workbench, port=0):
                 if path == "/api/experiments": result = {"experiments": workbench.list_experiments()}
                 elif path == "/api/config": result = public_config(workbench.workspace)
                 elif path == "/api/jobs": result = {"jobs": jobs.list() + agent.list_jobs()}
+                elif path == "/api/version": result = {"version": __version__}
                 elif path == "/api/update":
                     from .updates import gui_update_info
                     result = gui_update_info(workbench.workspace)
@@ -276,10 +302,12 @@ def make_server(workbench, port=0):
     server.agent_runner = agent
     server.replay_jobs = jobs
     server.owned_agent_jobs = owned_agent_jobs
+    server.update_events = updates
     return server
 
 
 def close_jobs(server):
+    server.update_events.close()
     for job in server.agent_runner.list_jobs():
         if job["id"] in server.owned_agent_jobs and job["status"] in ACTIVE:
             server.agent_runner.cancel(job["id"])
@@ -299,7 +327,7 @@ def serve(workbench, experiment_id=None, port=0, open_browser=True):
     if open_browser: webbrowser.open(url)
     from .updates import start_update_checker
     update_stop = threading.Event()
-    update_thread = start_update_checker(workbench.workspace, update_stop)
+    update_thread = start_update_checker(workbench.workspace, update_stop, server.update_events.publish)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally:

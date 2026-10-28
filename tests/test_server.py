@@ -15,6 +15,7 @@ from ablation_workbench.engine import Workbench
 from ablation_workbench.installation import installation_upgrade
 from ablation_workbench.runner import AgentRunner
 from ablation_workbench.server import ACTIVE, close_jobs, make_server, save_json
+from ablation_workbench import __version__
 
 
 class ServerTests(unittest.TestCase):
@@ -86,6 +87,27 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request("/api/demo", {}, {"X-Ablation-Client": ""})[0], 403)
         self.assertEqual(self.request("/api/experiments", headers={"Host": "other.example"})[0], 403)
         self.assertEqual(self.workbench.list_experiments(), [])
+
+    def test_update_endpoints_do_not_fetch_or_block_on_workspace_activity(self):
+        with patch("ablation_workbench.updates.urlopen") as fetch:
+            self.assertEqual(self.request("/api/version"), (200, {"version": __version__}))
+            status, result = self.request("/api/update")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["current"], __version__)
+            fetch.assert_not_called()
+
+    def test_sse_sends_update_hint_and_closes_on_shutdown(self):
+        with urlopen(self.url + "/api/events", timeout=3) as response:
+            self.assertIn("text/event-stream", response.headers["Content-Type"])
+            self.assertEqual(response.readline(), b"retry: 1000\n")
+            self.assertEqual(response.readline(), b"\n")
+            self.server.update_events.publish()
+            self.assertEqual(json.loads(response.readline().decode().removeprefix("data: ")), {"type": "update_available"})
+            self.assertEqual(response.readline(), b"\n")
+            self.assertEqual(self.request("/api/version")[0], 200)
+            self.server.update_events.close()
+            self.assertEqual(response.read(), b"")
+        self.assertEqual(self.request("/api/events", headers={"Origin": "https://other.example"})[0], 403)
 
     def test_gui_cannot_import_arbitrary_files(self):
         status, result = self.request("/api/import", {"source": {"kind": "request", "path": "/etc/passwd"}})

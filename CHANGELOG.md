@@ -2,6 +2,12 @@
 
 <!-- version list -->
 
+## [Unreleased]
+
+- Notify open pages of new releases through SSE without polling version metadata.
+- Read cached version information without waiting for PyPI; keep the last known release when offline.
+- Prompt open pages to refresh after a service upgrade while preserving comment drafts.
+
 ## v0.2.0 (2026-10-28)
 
 ### Bug Fixes

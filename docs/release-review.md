@@ -61,4 +61,4 @@
 
 首次发布需要在 PyPI 为 `ablation-workbench` 配置 GitHub trusted publisher：仓库 `yiminspace/ablation`、workflow `release.yml`、environment `pypi`。GitHub 中需存在对应 environment。后续正常发布不需要预览版开关或人工输入确认文字。
 
-GUI 后台检查 PyPI，检查结果缓存 24 小时；发现新版后显示当前/最新版本、升级命令和发布说明。用户执行升级命令后重新启动 GUI。源码或 editable 安装不检查注册表，`ABLATION_UPDATE_CHECK=0` 可关闭检查。本机若仍绑定本地源码安装，需要在首个线上发行版可用后改为从 PyPI 安装。
+GUI 后台检查 PyPI，检查结果缓存 24 小时；版本接口只读缓存，失败保留上次已知版本。发现新版后通过 SSE 通知页面，显示当前/最新版本、升级命令和发布说明。用户执行升级命令后重新启动 GUI，原页面重连后检测服务版本并提示刷新。源码或 editable 安装不检查注册表，`ABLATION_UPDATE_CHECK=0` 可关闭检查。本机若仍绑定本地源码安装，需要在首个线上发行版可用后改为从 PyPI 安装。
