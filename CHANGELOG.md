@@ -2,6 +2,60 @@
 
 <!-- version list -->
 
+## v0.2.0 (2026-10-28)
+
+### Bug Fixes
+
+- Preserve legacy review anchors with fixed baseline
+  ([#2](https://github.com/yiminspace/ablation/pull/2),
+  [`3b76cd0`](https://github.com/yiminspace/ablation/commit/3b76cd09a53277fb384136ac88bc51e38b20326f))
+
+- Resolve exact external logs for replay evidence
+  ([#1](https://github.com/yiminspace/ablation/pull/1),
+  [`149fccf`](https://github.com/yiminspace/ablation/commit/149fccfa5d4444ee16771bd2c64f8134e12bc2be))
+
+- 保留旧版评论并校验导入分组和长 diff ([#3](https://github.com/yiminspace/ablation/pull/3),
+  [`dcdf8c9`](https://github.com/yiminspace/ablation/commit/dcdf8c969f96186e17ce96a617f6bb42927a8dea))
+
+- 等待外部日志入库后自动关联测试记录 ([#5](https://github.com/yiminspace/ablation/pull/5),
+  [`d76308e`](https://github.com/yiminspace/ablation/commit/d76308e431d61a8e8dba81fdbaa2a12466856e80))
+
+### Documentation
+
+- Require replay log association before handoff
+  ([#8](https://github.com/yiminspace/ablation/pull/8),
+  [`1f839ba`](https://github.com/yiminspace/ablation/commit/1f839ba70a61fbd190a3612778897fdcdc80ede2))
+
+- 对齐 ablation 中英文 skill 指引 ([#6](https://github.com/yiminspace/ablation/pull/6),
+  [`a771914`](https://github.com/yiminspace/ablation/commit/a771914a49c1ec3cc62b03e73df2033cf0b1e8ba))
+
+- 补齐中文版 skill 元数据和对应结构 ([#7](https://github.com/yiminspace/ablation/pull/7),
+  [`31bf4d9`](https://github.com/yiminspace/ablation/commit/31bf4d9ed9cc7bd5859cf2df9e3afe29a007182f))
+
+### Features
+
+- Add complete replay history and detail drawers
+  ([#9](https://github.com/yiminspace/ablation/pull/9),
+  [`c6b849e`](https://github.com/yiminspace/ablation/commit/c6b849e5ab28bc62c0836d4dcedeb4ee00d1535a))
+
+- Simplify original request reviews and source links
+  ([#2](https://github.com/yiminspace/ablation/pull/2),
+  [`3b76cd0`](https://github.com/yiminspace/ablation/commit/3b76cd09a53277fb384136ac88bc51e38b20326f))
+
+- Simplify request review and link rationale to source
+  ([#2](https://github.com/yiminspace/ablation/pull/2),
+  [`3b76cd0`](https://github.com/yiminspace/ablation/commit/3b76cd09a53277fb384136ac88bc51e38b20326f))
+
+- 在实验标题下实时展示测试日志 ([#4](https://github.com/yiminspace/ablation/pull/4),
+  [`8905d67`](https://github.com/yiminspace/ablation/commit/8905d67e8ace99f023985c15605e3ea30e3e1b31))
+
+- 对齐 Quarry 的自动发布与版本更新流程 ([#10](https://github.com/yiminspace/ablation/pull/10),
+  [`52949cd`](https://github.com/yiminspace/ablation/commit/52949cd16c67051e1adb57a20066eaed6b5042a6))
+
+- 按需求分组审阅提示词改动并保留原文 diff ([#3](https://github.com/yiminspace/ablation/pull/3),
+  [`dcdf8c9`](https://github.com/yiminspace/ablation/commit/dcdf8c969f96186e17ce96a617f6bb42927a8dea))
+
+
 ## Unreleased
 
 - Align releases and update discovery with Quarry: automatically version main commits, publish validated tagged packages to PyPI, and show periodic GUI update notifications with explicit upgrade commands and release notes.
