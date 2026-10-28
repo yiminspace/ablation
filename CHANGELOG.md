@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.0 (2026-10-28)
+
+### Features
+
+- 改进实验版本展示与回放书签审阅 ([#12](https://github.com/yiminspace/ablation/pull/12),
+  [`87ce6dc`](https://github.com/yiminspace/ablation/commit/87ce6dc0e3ce22acda360f2efb8a83c661a977d2))
+
+
 ## v0.2.1 (2026-10-28)
 
 ### Bug Fixes
