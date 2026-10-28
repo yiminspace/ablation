@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.1 (2026-10-28)
+
+### Bug Fixes
+
+- 补齐更新推送与升级刷新提示 ([#11](https://github.com/yiminspace/ablation/pull/11),
+  [`c1b3dac`](https://github.com/yiminspace/ablation/commit/c1b3dac550418deaf8887665999638f382e3f778))
+
+
 ## [Unreleased]
 
 - Notify open pages of new releases through SSE without polling version metadata.
