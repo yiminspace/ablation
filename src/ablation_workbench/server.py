@@ -222,7 +222,7 @@ def make_server(workbench, port=0):
                 if path == "/api/events":
                     self.send_events()
                     return
-                if path in ("/", "/index.html", "/favicon.svg", "/app.js", "/styles.css", "/theme.js", "/voyage.css", "/voyage-toolbar.js", "/messages.js", "/messages.css", "/bifrost-LICENSE.txt", "/bifrost-NOTICE.txt"):
+                if path in ("/", "/index.html", "/favicon.svg", "/app.js", "/styles.css", "/theme.js", "/voyage.css", "/voyage-toolbar.js", "/messages.js", "/messages.css", "/run-results.js", "/bifrost-LICENSE.txt", "/bifrost-NOTICE.txt"):
                     asset = WEB / ("index.html" if path == "/" else path[1:])
                     self.send_bytes(asset.read_bytes(), content_type=(mimetypes.guess_type(asset)[0] or "text/plain") + "; charset=utf-8")
                     return

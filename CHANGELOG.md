@@ -12,6 +12,9 @@
 
 ## [Unreleased]
 
+- Automatically follow the latest candidate in the changes view, while keeping historical review links explicit.
+- Show replay failure reasons with expected and actual values, and link assertions to model output.
+- Switch replays through index bookmarks attached to stacked pages; bookmarks move with their pages while reading positions are retained.
 - Notify open pages of new releases through SSE without polling version metadata.
 - Read cached version information without waiting for PyPI; keep the last known release when offline.
 - Prompt open pages to refresh after a service upgrade while preserving comment drafts.
