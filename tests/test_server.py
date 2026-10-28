@@ -47,7 +47,7 @@ class ServerTests(unittest.TestCase):
         except HTTPError as exc: return exc.code, json.load(exc)
 
     def test_gui_serves_bundled_theme_without_external_asset_requests(self):
-        for asset, content_type in (("favicon.svg", "image/svg+xml"), ("voyage.css", "text/css"), ("theme.js", "javascript"), ("voyage-toolbar.js", "javascript"), ("messages.js", "javascript"), ("messages.css", "text/css"), ("bifrost-LICENSE.txt", "text/plain"), ("bifrost-NOTICE.txt", "text/plain")):
+        for asset, content_type in (("favicon.svg", "image/svg+xml"), ("voyage.css", "text/css"), ("theme.js", "javascript"), ("voyage-toolbar.js", "javascript"), ("messages.js", "javascript"), ("messages.css", "text/css"), ("run-results.js", "javascript"), ("bifrost-LICENSE.txt", "text/plain"), ("bifrost-NOTICE.txt", "text/plain")):
             with self.subTest(asset=asset), urlopen(self.url + "/" + asset) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn(content_type, response.headers["Content-Type"])

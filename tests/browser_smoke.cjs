@@ -202,12 +202,16 @@ async function main(){
   assert.equal(await page.locator('#run-log-feed .bifrost-messages').count(),0);
   const openedRun=await page.locator('[data-run-detail]').first().getAttribute('data-run-detail');
   await page.locator('.batch-copy strong').first().click();
+  await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
   await page.locator('#run-drawer .bifrost-messages').waitFor();
-  assert.equal(await page.locator('#run-drawer-select option').count(),2);
-  await page.locator('#run-drawer-select').selectOption(exp.runs[0].id);
+  assert.equal(await page.locator('#run-drawer-stack .run-drawer-sheet[data-visible="true"]').count(),1);
+  assert.equal(await page.locator('#run-drawer-panel > .run-drawer-spine').count(),1);
+  const baselineSpine=page.locator(`#run-drawer-stack .run-drawer-sheet[data-visible="true"] [data-run-detail="${exp.runs[0].id}"]`);
+  if(await page.locator('#run-drawer-panel').getAttribute('data-run-id')!==exp.runs[0].id)await baselineSpine.locator('.spine-number').click();
+  await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
   await page.locator('#run-drawer-title').getByText('原提示词',{exact:true}).waitFor();
   assert.equal(await page.locator('#run-drawer-meta .run-log-links a').getAttribute('href'),'https://logs.example.invalid/records/synthetic-response');
-  assert((await page.locator('#run-drawer').evaluate(node=>node.clientWidth))<=880);
+  assert((await page.locator('#run-drawer-panel').evaluate(node=>node.clientWidth))>=600);
   const messages=page.locator('#run-drawer .bifrost-messages');
   assert((await page.locator('#run-drawer').evaluate(node=>node.clientHeight))>=980);
   assert((await page.locator('.bf-message-scroll').evaluate(node=>node.clientHeight))>=700);
@@ -246,11 +250,11 @@ async function main(){
   assert.equal(await page.locator('#run-drawer').isVisible(),true);
   // Switching drawer views preserves expanded content and keeps the list position.
   await toolOutput.getByRole('button',{name:'展开完整内容'}).click();
-  await page.locator('[data-run-view="checks"]').click();
+  await page.locator('.run-drawer-tabs [data-run-view="checks"]').click();
   await page.locator('#run-drawer-checks').getByText('外部证据',{exact:true}).waitFor();
-  await page.locator('[data-run-view="raw"]').click();
+  await page.locator('.run-drawer-tabs [data-run-view="raw"]').click();
   assert((await page.locator('#run-drawer-raw').innerText()).includes('fixture_action'));
-  await page.locator('[data-run-view="messages"]').click();
+  await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
   assert.equal(await toolOutput.getByRole('button',{name:'收起'}).getAttribute('aria-expanded'),'true');
   assert.equal(await page.evaluate(()=>globalThis.previewInjected),undefined);
   await page.keyboard.press('Escape');
@@ -259,7 +263,7 @@ async function main(){
   await page.locator('.page-tab[data-tab="runs"]').evaluate(button=>button.click());
   await page.locator('#runs-view .badge.error').waitFor();
   await page.locator('[data-run-detail]').first().click();
-  await page.locator('[data-run-view="checks"]').click();
+  await page.locator('.run-drawer-tabs [data-run-view="checks"]').click();
   await page.locator('#run-drawer-checks').getByText('外部证据',{exact:true}).waitFor();
   assert.equal(await page.locator('#run-drawer-checks a').first().getAttribute('href'),'https://logs.example.invalid/records/synthetic-response');
   await page.keyboard.press('Escape');
@@ -292,7 +296,9 @@ async function main(){
   const accessibleRuns=new Set();
   for(const batch of await page.locator('#run-log-feed [data-batch-group]').all()) {
     await batch.locator('.batch-number').click();
-    for(const runId of await page.locator('#run-drawer-select option').evaluateAll(options=>options.map(option=>option.value)))accessibleRuns.add(runId);
+    for(const runId of await page.locator('#run-drawer-stack .run-drawer-sheet[data-visible="true"] [data-run-detail]').evaluateAll(buttons=>buttons.map(button=>button.dataset.runDetail)))accessibleRuns.add(runId);
+    const context=await page.locator('#run-drawer-context').innerText();
+    for(const run of exp.runs)if(context.includes(run.id))accessibleRuns.add(run.id);
     await page.keyboard.press('Escape');
     await page.locator('#run-drawer').waitFor({state:'hidden'});
   }
@@ -300,6 +306,7 @@ async function main(){
   assert((await page.locator(`#session-list [data-select-experiment="${eid}"]`).innerText()).includes('4 次回放'));
   assert.equal(packets.length,4);assert.deepEqual(packets.map(x=>x.input),Array(4).fill(original.input));
   await page.locator('[data-tab="diff"]').click();
+  await page.locator('.artifact-nav [data-artifact="response"]').click();
   await page.locator('#comparison-status').getByText(/历史回放 4 次：3 通过 · 1 未通过/).waitFor({timeout:15000});
   // A follow-up stays attached to the saved evidence, even after newer responses exist.
   await page.locator('.diff-row [data-plus]').first().click();

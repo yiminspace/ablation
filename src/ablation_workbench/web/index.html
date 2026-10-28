@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/messages.css">
   <script src="/messages.js" defer></script>
+  <script src="/run-results.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/voyage-toolbar.js" defer></script>
 </head>
@@ -57,11 +58,19 @@
   </main>
   </div>
   <dialog id="run-drawer" aria-labelledby="run-drawer-title">
-    <header class="run-drawer-header"><div class="run-drawer-heading"><h2 id="run-drawer-title"></h2><p id="run-drawer-context"></p></div><button class="vg-iconbtn" data-action="close-run-drawer" aria-label="关闭回放详情" autofocus><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></header>
-    <label id="run-drawer-switch" class="run-drawer-switch" hidden><span>本批回放</span><select id="run-drawer-select" class="vg-input" aria-label="选择本批回放"></select></label>
+    <div id="run-drawer-stack" role="group" aria-label="叠放的回放页面"></div>
+    <section id="run-drawer-panel" aria-label="当前回放详情">
+    <div id="run-drawer-viewport" class="run-drawer-viewport">
+    <div id="run-drawer-surface" class="run-drawer-surface" role="region" aria-label="当前回放内容">
+    <header class="run-drawer-header"><div class="run-drawer-heading"><h2 id="run-drawer-title"></h2><p id="run-drawer-context"></p></div><div class="run-drawer-actions"><button class="vg-btn btn quiet run-drawer-all" id="run-drawer-all" data-action="toggle-run-picker" aria-expanded="false" aria-controls="run-drawer-picker">全部回放</button><button class="vg-iconbtn" data-action="close-run-drawer" aria-label="关闭回放详情" autofocus><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div></header>
     <div id="run-drawer-meta" class="run-drawer-meta"></div>
+    <div id="run-drawer-failure" class="run-drawer-failure" hidden></div>
     <nav class="vg-tabs run-drawer-tabs" role="tablist" aria-label="回放详情视图"><button class="vg-tab" data-run-view="messages" role="tab" aria-selected="true" aria-controls="run-drawer-messages">Messages</button><button class="vg-tab" data-run-view="checks" role="tab" aria-selected="false" aria-controls="run-drawer-checks">断言 <span id="run-check-count" class="count">0</span></button><button class="vg-tab" data-run-view="raw" role="tab" aria-selected="false" aria-controls="run-drawer-raw">Raw JSON</button></nav>
-    <div class="run-drawer-content"><section id="run-drawer-messages" role="tabpanel" aria-label="Messages"></section><section id="run-drawer-checks" role="tabpanel" aria-label="断言" tabindex="0" hidden></section><section id="run-drawer-raw" role="tabpanel" aria-label="Raw JSON" tabindex="0" hidden></section></div>
+    <div class="run-drawer-content"><section id="run-drawer-messages" class="run-drawer-messages" role="tabpanel" aria-label="Messages"></section><section id="run-drawer-checks" class="run-drawer-checks" role="tabpanel" aria-label="断言" tabindex="0" hidden></section><section id="run-drawer-raw" class="run-drawer-raw" role="tabpanel" aria-label="Raw JSON" tabindex="0" hidden></section></div>
+    </div>
+    </div>
+    </section>
+    <div id="run-drawer-picker" role="group" aria-label="本批全部回放" hidden></div>
   </dialog>
   <dialog id="modal" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title"></h2><button class="text-btn" data-action="close-modal" aria-label="关闭对话框">关闭</button></div><div id="modal-body" class="modal-body"></div></dialog>
   <div id="toast" class="vg-toast toast" role="status" aria-live="polite" hidden></div>

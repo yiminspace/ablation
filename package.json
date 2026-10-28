@@ -2,12 +2,12 @@
   "name": "ablation-browser-verification",
   "private": true,
   "scripts": {
-    "test:browser": "node tests/browser_smoke.cjs && node tests/browser_updates.cjs",
+    "test:browser": "node tests/browser_smoke.cjs && node tests/browser_updates.cjs && node tests/browser_workbench.cjs",
     "vendor:voyage": "node scripts/vendor-voyage.cjs",
     "check:styles": "node scripts/vendor-voyage.cjs --check",
     "build:ui": "node scripts/vendor-voyage.cjs && node scripts/build-ui.cjs",
     "check:ui": "node scripts/vendor-voyage.cjs --check && node scripts/build-ui.cjs --check",
-    "test:ui": "node --test tests/messages.test.cjs"
+    "test:ui": "node --test tests/messages.test.cjs tests/run-results.test.cjs"
   },
   "devDependencies": {
     "@yiminlab/voyage": "0.17.0",
