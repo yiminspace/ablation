@@ -64,13 +64,24 @@ class UpdatesTests(unittest.TestCase):
 
     def test_empty_or_malformed_gui_cache_never_fetches(self):
         with patch.object(updates, "_editable", return_value=False), patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates, "urlopen") as fetch:
-            for contents in [None, "broken", "[]", "null"]:
+            for contents in [None, "broken", "[]", "null", json.dumps({"status": "checked", "latest": None, "checked_at": 1000})]:
                 with self.subTest(contents=contents):
                     if contents is not None:
                         (self.workspace / ".update-cache.json").write_text(contents)
                     result = updates.gui_update_info(self.workspace)
                     self.assertEqual("unknown", result["status"])
                     self.assertFalse(result["available"])
+            fetch.assert_not_called()
+
+    def test_invalid_cache_timestamp_keeps_known_release_without_crashing(self):
+        with patch.object(updates, "_editable", return_value=False), patch.dict("os.environ", {"ABLATION_UPDATE_CHECK": "1"}), patch.object(updates, "urlopen") as fetch:
+            for timestamp in [True, "invalid", float("nan"), float("inf"), 10 ** 1000]:
+                with self.subTest(timestamp_type=type(timestamp).__name__):
+                    (self.workspace / ".update-cache.json").write_text(json.dumps({"latest": self.next_version, "status": "checked", "checked_at": timestamp}))
+                    result = updates.gui_update_info(self.workspace)
+                    self.assertEqual(self.next_version, result["latest"])
+                    self.assertTrue(result["available"])
+                    self.assertNotIn("checked_at", result)
             fetch.assert_not_called()
 
     def test_offline_check_retains_last_known_release_and_throttles_retries(self):

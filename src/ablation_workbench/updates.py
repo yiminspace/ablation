@@ -78,9 +78,16 @@ def cached_update_info(workspace):
         base.update(latest=latest, available=_version_tuple(latest) > _version_tuple(__version__))
     status = cached.get("status")
     base["status"] = status if status in ("checked", "unavailable") else "unknown"
+    if status == "checked" and _version_tuple(latest) is None:
+        base["status"] = "unknown"
     checked_at = cached.get("checked_at")
-    if isinstance(checked_at, (int, float)) and not isinstance(checked_at, bool) and math.isfinite(checked_at):
-        base["checked_at"] = checked_at
+    if base["status"] != "unknown" and isinstance(checked_at, (int, float)) and not isinstance(checked_at, bool):
+        try:
+            timestamp = float(checked_at)
+            if math.isfinite(timestamp):
+                base["checked_at"] = timestamp
+        except OverflowError:
+            pass
     if isinstance(cached.get("reason"), str):
         base["reason"] = cached["reason"]
     return base
