@@ -1,5 +1,7 @@
 import json
 import os
+import errno
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -45,6 +47,47 @@ class ServerTests(unittest.TestCase):
         try:
             with urlopen(req) as res: return res.status, json.load(res)
         except HTTPError as exc: return exc.code, json.load(exc)
+
+    def test_default_port_is_stable_and_falls_back_only_when_occupied(self):
+        with socket.socket() as occupied:
+            occupied.bind(("127.0.0.1", 0))
+            port = occupied.getsockname()[1]
+            with patch("ablation_workbench.server.DEFAULT_PORT", port):
+                fallback = make_server(self.workbench, port=None)
+                try:
+                    self.assertGreater(fallback.server_port, port)
+                finally:
+                    fallback.server_close()
+                with self.assertRaises(OSError) as error:
+                    make_server(self.workbench, port=port)
+                self.assertEqual(error.exception.errno, errno.EADDRINUSE)
+        with patch("ablation_workbench.server.DEFAULT_PORT", port):
+            for _ in range(2):
+                server = make_server(self.workbench, port=None)
+                self.assertEqual(server.server_port, port)
+                server.server_close()
+
+    def test_default_port_does_not_hide_other_bind_errors(self):
+        with patch("ablation_workbench.server.ThreadingHTTPServer", side_effect=OSError(errno.EACCES, "denied")) as bind:
+            with self.assertRaises(OSError):
+                make_server(self.workbench, port=None)
+            self.assertEqual(bind.call_count, 1)
+
+    def test_ablation_entry_assets_and_api(self):
+        for entry in ("/", "/ablation", "/ablation/"):
+            with urlopen(self.url + entry + "?experiment=saved") as response:
+                self.assertEqual(response.url, self.url + "/ablation/?experiment=saved")
+                html = response.read().decode()
+                self.assertIn('src="/ablation/app.js"', html)
+                self.assertIn('href="/ablation/"', html)
+        with urlopen(self.url + "/ablation/app.js") as response:
+            self.assertIn(b"fetch('/ablation' + path", response.read())
+        self.assertEqual(self.request("/ablation/api/version"), (200, {"version": __version__}))
+        status, experiment = self.request("/ablation/api/demo", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("/ablation/api/experiments/" + experiment["id"])[0], 200)
+        self.assertEqual(self.request("/ablation/api/demo", {}, {"Origin": "https://other.example"})[0], 403)
+        self.assertEqual(self.request("/ablation-other/api/version")[0], 404)
 
     def test_gui_serves_bundled_theme_without_external_asset_requests(self):
         for asset, content_type in (("favicon.svg", "image/svg+xml"), ("voyage.css", "text/css"), ("theme.js", "javascript"), ("voyage-toolbar.js", "javascript"), ("messages.js", "javascript"), ("messages.css", "text/css"), ("run-results.js", "javascript"), ("bifrost-LICENSE.txt", "text/plain"), ("bifrost-NOTICE.txt", "text/plain")):
@@ -97,7 +140,7 @@ class ServerTests(unittest.TestCase):
             fetch.assert_not_called()
 
     def test_sse_sends_update_hint_and_closes_on_shutdown(self):
-        with urlopen(self.url + "/api/events", timeout=3) as response:
+        with urlopen(self.url + "/ablation/api/events", timeout=3) as response:
             self.assertIn("text/event-stream", response.headers["Content-Type"])
             self.assertEqual(response.readline(), b"retry: 1000\n")
             self.assertEqual(response.readline(), b"\n")

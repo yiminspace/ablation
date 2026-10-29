@@ -35,7 +35,7 @@
   async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
     const options = {method, headers:{Accept:'application/json'}};
     if (body !== undefined) { options.headers['Content-Type']='application/json'; options.headers['X-Ablation-Client']='local'; options.body=JSON.stringify(body); }
-    const response = await fetch(path, options);
+    const response = await fetch('/ablation' + path, options);
     let value;
     try { value = await response.json(); } catch { throw new Error(`服务返回了无法读取的内容（HTTP ${response.status}）`); }
     if (!response.ok) throw new Error(value.error?.message || value.error || `请求失败（HTTP ${response.status}）`);
@@ -203,7 +203,7 @@
   function experimentDetails() {
     const e=state.experiment,source=e.source || {};
     const synthetic=e.synthetic || source.kind==='demo' || source.fidelity==='synthetic';
-    openModal('experiment-details','实验详情',`<dl class="config-list"><dt>数据来源</dt><dd>${synthetic?'合成示例':esc(source.kind || '未标注')}<br><span class="muted">${esc(source.ref || '')}</span></dd><dt>来源完整度</dt><dd>${esc(source.fidelity || '未标注')}</dd><dt>实验编号</dt><dd><code>${esc(e.id)}</code></dd><dt>记录版本</dt><dd>r${esc(e.revision)}</dd><dt>创建时间</dt><dd>${esc(formatTime(e.created_at))}</dd><dt>原始请求指纹</dt><dd><code>${esc(e.baseline?.hash || '未提供')}</code></dd></dl>${source.notes?.length?`<details class="preview-details"><summary>来源说明</summary><p class="dialog-explanation">${esc(Array.isArray(source.notes)?source.notes.join(' '):source.notes)}</p></details>`:''}<div class="form-actions"><a class="vg-btn btn" id="export-link" href="${endpoint('/export')}" download>导出实验</a><button class="vg-btn btn" data-action="close-modal">关闭</button></div>`);
+    openModal('experiment-details','实验详情',`<dl class="config-list"><dt>数据来源</dt><dd>${synthetic?'合成示例':esc(source.kind || '未标注')}<br><span class="muted">${esc(source.ref || '')}</span></dd><dt>来源完整度</dt><dd>${esc(source.fidelity || '未标注')}</dd><dt>实验编号</dt><dd><code>${esc(e.id)}</code></dd><dt>记录版本</dt><dd>r${esc(e.revision)}</dd><dt>创建时间</dt><dd>${esc(formatTime(e.created_at))}</dd><dt>原始请求指纹</dt><dd><code>${esc(e.baseline?.hash || '未提供')}</code></dd></dl>${source.notes?.length?`<details class="preview-details"><summary>来源说明</summary><p class="dialog-explanation">${esc(Array.isArray(source.notes)?source.notes.join(' '):source.notes)}</p></details>`:''}<div class="form-actions"><a class="vg-btn btn" id="export-link" href="/ablation${endpoint('/export')}" download>导出实验</a><button class="vg-btn btn" data-action="close-modal">关闭</button></div>`);
   }
   function switchTab(tab) {
     state.tab=tab;
@@ -566,7 +566,7 @@
   }
   function startUpdateEvents() {
     if(updateEvents || !window.EventSource)return;
-    const source=new EventSource('/api/events');
+    const source=new EventSource('/ablation/api/events');
     updateEvents=source;
     source.onopen=()=>{
       if(updateEvents!==source)return;

@@ -57,13 +57,13 @@ async function stop(service){send(service,{type:'stop'});await until(()=>service
 async function main(){
   let service=await start();
   const initial=service.version,parts=initial.split('.').map(Number);parts[2]+=1;
-  const next=parts.join('.'),url=`http://127.0.0.1:${service.port}/`;
+  const next=parts.join('.'),url=`http://127.0.0.1:${service.port}/ablation/`;
   browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
   page.on('pageerror',error=>errors.push(error.message));
   let updates=0,jobs=0,connections=0,versions=0;
-  page.on('request',request=>{const p=new URL(request.url()).pathname;if(p==='/api/update')updates++;if(p==='/api/jobs')jobs++;});
-  page.on('response',response=>{const p=new URL(response.url()).pathname;if(p==='/api/events'&&response.ok())connections++;if(p==='/api/version'&&response.ok())versions++;});
+  page.on('request',request=>{const p=new URL(request.url()).pathname;if(p==='/ablation/api/update')updates++;if(p==='/ablation/api/jobs')jobs++;});
+  page.on('response',response=>{const p=new URL(response.url()).pathname;if(p==='/ablation/api/events'&&response.ok())connections++;if(p==='/ablation/api/version'&&response.ok())versions++;});
   await page.clock.install();
   await page.goto(url);
   await page.locator('#empty-state').waitFor({state:'visible'});

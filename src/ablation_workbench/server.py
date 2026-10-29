@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import errno
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
@@ -24,6 +25,14 @@ from .runner import AgentRunner, workspace_lock
 ACTIVE = {"queued", "running", "cancelling"}
 MAX_BODY = 32 * 1024 * 1024
 WEB = Path(__file__).parent / "web"
+DEFAULT_PORT = 8766
+BASE_PATH = "/ablation"
+
+
+def route_path(path):
+    if path == BASE_PATH or path.startswith(BASE_PATH + "/"):
+        return path[len(BASE_PATH):] or "/"
+    return path
 
 
 def now():
@@ -218,7 +227,11 @@ def make_server(workbench, port=0):
             try:
                 if not self.valid_local(): self.error(ValueError("Local origin required"), 403); return
                 parsed = urlsplit(self.path)
-                path = parsed.path
+                if parsed.path in ("/", "/index.html", BASE_PATH):
+                    target = BASE_PATH + "/" + ("?" + parsed.query if parsed.query else "")
+                    self.send_bytes(b"", 302, extra={"Location": target})
+                    return
+                path = route_path(parsed.path)
                 if path == "/api/events":
                     self.send_events()
                     return
@@ -258,7 +271,7 @@ def make_server(workbench, port=0):
         def do_POST(self):
             try:
                 if not self.valid_local(mutation=True): self.error(ValueError("Local origin and client header required"), 403); return
-                path = urlsplit(self.path).path
+                path = route_path(urlsplit(self.path).path)
                 body = self.read_body()
                 if path == "/api/import":
                     source = body.get("source", {})
@@ -297,7 +310,16 @@ def make_server(workbench, port=0):
                 self.send_json(result)
             except (ValueError, OSError, RuntimeError, KeyError, TypeError) as exc: self.error(exc)
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    # Bind directly so another process cannot claim the port between a probe and bind.
+    selected_port = DEFAULT_PORT if port is None else port
+    while True:
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", selected_port), Handler)
+            break
+        except OSError as exc:
+            if port is not None or exc.errno != errno.EADDRINUSE or selected_port >= 65535:
+                raise
+            selected_port += 1
     server.daemon_threads = True
     server.agent_runner = agent
     server.replay_jobs = jobs
@@ -319,10 +341,10 @@ def close_jobs(server):
         time.sleep(0.1)
 
 
-def serve(workbench, experiment_id=None, port=0, open_browser=True):
+def serve(workbench, experiment_id=None, port=None, open_browser=True):
     if experiment_id: workbench.get(experiment_id)
     server = make_server(workbench, port)
-    url = f"http://127.0.0.1:{server.server_port}/" + (f"?experiment={experiment_id}" if experiment_id else "")
+    url = f"http://127.0.0.1:{server.server_port}{BASE_PATH}/" + (f"?experiment={experiment_id}" if experiment_id else "")
     print(json.dumps({"url": url, "workspace": str(workbench.workspace)}), flush=True)
     if open_browser: webbrowser.open(url)
     from .updates import start_update_checker

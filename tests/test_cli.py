@@ -60,6 +60,13 @@ class CLITests(unittest.TestCase):
             self.assertNotIn("sk-fake-secret", error.getvalue())
             self.assertFalse(Path(directory, "config.json").exists())
 
+    def test_gui_port_defaults_and_explicit_override(self):
+        with tempfile.TemporaryDirectory() as directory, patch("ablation_workbench.server.serve") as serve:
+            for options, port in (([], None), (["--port", "9000"], 9000), (["--port", "0"], 0)):
+                status, _, error = self.invoke(directory, ["gui", "--no-open", *options])
+                self.assertEqual(status, 0, error)
+                self.assertEqual(serve.call_args.kwargs["port"], port)
+
     def test_generic_profile_mapping_flags_and_local_import(self):
         with tempfile.TemporaryDirectory() as directory:
             status, _, error = self.invoke(directory, ["config", "profile", "source", "--source-base-url", "https://logs.example", "--source-path", "/records/{ref}", "--source-request-pointer", "/payload", "--source-response-pointer", "/result", "--source-fields-json", '{"model":"/deployment"}', "--token-env", "EXAMPLE_SOURCE_TOKEN"])

@@ -43,6 +43,8 @@ Scenario origin is `source`, `real`, `derived`, or `synthetic`; the built-in dem
 
 Loopback only, validate Host/Origin, require `X-Ablation-Client: local` on mutations. Errors `{error:{code,message}}` with non-2xx. No API reads arbitrary paths. Files imported through GUI are uploaded JSON content. Recognized credential fields and configured secret values are redacted. Source URLs reject credential query fields; patches that introduce credentials into the effective request are rejected. Prompt and response text still require review before sharing.
 
+The GUI lives at `/ablation/`; the routes below use that prefix (for example, `/ablation/api/experiments`). Legacy unprefixed API routes remain compatible. Default GUI startup binds port 8766, trying subsequent ports only on address-in-use errors. An explicit `--port` does not fall back.
+
 - GET `/api/experiments` -> `{experiments:[...]}`; GET `/api/experiments/<id>` -> experiment.
 - POST `/api/import` source + title -> experiment; POST `/api/demo` -> synthetic example experiment.
 - GET `/api/experiments/<id>/diff?base=...&candidate=...&scenario=...&artifact=...` -> compare.
