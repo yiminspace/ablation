@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.1 (2026-10-29)
+
+### Bug Fixes
+
+- 固定 GUI 默认端口并使用 /ablation 路径 ([#13](https://github.com/yiminspace/ablation/pull/13),
+  [`5259162`](https://github.com/yiminspace/ablation/commit/525916204ec73f0d7bfc25952867cbd9b595ba54))
+
+
 ## v0.3.0 (2026-10-28)
 
 ### Features
