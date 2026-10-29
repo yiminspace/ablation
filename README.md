@@ -34,6 +34,8 @@ ablation --workspace ./experiments import request.json --format request
 ablation --workspace ./experiments gui
 ```
 
+The GUI starts at `http://127.0.0.1:8766/ablation/`. It tries subsequent ports only when the default port is occupied. `--port PORT` binds an explicit port without fallback; `--port 0` requests a random port.
+
 The example addresses are placeholders. Replace them with your own endpoints and supply credentials through the named environment variables. Configuration stores variable names, not secret values. Source retrieval and model inference use separate endpoint and credential settings.
 
 Choose an explicit import format:

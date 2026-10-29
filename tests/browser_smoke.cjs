@@ -27,7 +27,7 @@ async function main(){
   child=spawn(python,['-m','ablation_workbench','--workspace',workspace,'gui','--no-open'],{cwd:process.env.ABLATION_USE_INSTALLED?workspace:root,env:appEnv,stdio:['ignore','pipe','pipe']});
   let output='',errors='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>errors+=b);
   const url=await until(()=>{if(child.exitCode!==null)throw Error(errors);try{return JSON.parse(output.trim()).url;}catch{return null;}});
-  const api=async(route,body)=>{const response=await fetch(new URL(route,url),{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-Ablation-Client':'local'},body:body===undefined?undefined:JSON.stringify(body)});const data=await response.json();assert(response.ok,JSON.stringify(data));return data;};
+  const api=async(route,body)=>{const response=await fetch(new URL('/ablation'+route,url),{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-Ablation-Client':'local'},body:body===undefined?undefined:JSON.stringify(body)});const data=await response.json();assert(response.ok,JSON.stringify(data));return data;};
   browser=await chromium.launch({headless:true});
   const context=await browser.newContext({viewport:{width:1440,height:1000},permissions:['clipboard-read','clipboard-write']});
   const page=await context.newPage(),pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));

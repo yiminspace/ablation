@@ -135,6 +135,7 @@ async function sampleMotion(page,selector){
 async function main(){
   server=http.createServer((req,res)=>{
     const url=new URL(req.url,'http://127.0.0.1');
+    url.pathname=url.pathname.replace(/^\/ablation(?=\/|$)/,'')||'/';
     if(req.method!=='GET'){mutations.push(req.url);res.writeHead(405);res.end();return;}
     if(url.pathname==='/api/events'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('retry: 1000\n\n');return;}
     const json=data=>{res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -153,7 +154,7 @@ async function main(){
   });
   server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const base=`http://127.0.0.1:${server.address().port}/`;
+  const base=`http://127.0.0.1:${server.address().port}/ablation/`;
   browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'no-preference'});
   page.on('pageerror',error=>errors.push(error.message));

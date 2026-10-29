@@ -31,6 +31,8 @@ ablation demo --open
 
 完整配置、命令与示例见 [English README](README.md)。
 
+GUI 默认地址为 `http://127.0.0.1:8766/ablation/`，仅在端口被占用时依次尝试后续端口。`--port PORT` 指定端口且不自动回退；`--port 0` 显式使用随机端口。
+
 ## 接入数据源
 
 请求文件可以直接导入；HTTP 记录可使用 `request.body` 和 `response.body` 保存 JSON 正文。日志默认读取 `params` 中的请求字段，并用顶层 `model`、`input`、`messages`、`tools` 覆盖同名字段。任意嵌套结构可配置 `--source-request-pointer` 选出完整请求，或通过 `--source-fields-json` 将顶层请求字段映射到原始记录中的 JSON Pointer。`--source-response-pointer` 用于历史响应；没有响应时省略。映射路径不存在会报错。

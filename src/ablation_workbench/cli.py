@@ -92,7 +92,7 @@ def parser():
     demo.add_argument("--open", action="store_true")
     gui = sub.add_parser("gui", help="Serve the local review workspace")
     gui.add_argument("experiment", nargs="?")
-    gui.add_argument("--port", type=int, default=0)
+    gui.add_argument("--port", type=int, help="Bind this port (default: 8766, then the next free port; 0: random)")
     gui.add_argument("--no-open", action="store_true")
     candidate = sub.add_parser("candidate", help="Create an immutable candidate")
     candidate.add_argument("experiment"); candidate.add_argument("--label", required=True)

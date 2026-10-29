@@ -5,20 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Ablation · Prompt workbench</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
-  <script src="/theme.js"></script>
-  <link rel="stylesheet" href="/voyage.css">
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/messages.css">
-  <script src="/messages.js" defer></script>
-  <script src="/run-results.js" defer></script>
-  <script src="/app.js" defer></script>
-  <script src="/voyage-toolbar.js" defer></script>
+  <link rel="icon" href="/ablation/favicon.svg" type="image/svg+xml" sizes="any">
+  <script src="/ablation/theme.js"></script>
+  <link rel="stylesheet" href="/ablation/voyage.css">
+  <link rel="stylesheet" href="/ablation/styles.css">
+  <link rel="stylesheet" href="/ablation/messages.css">
+  <script src="/ablation/messages.js" defer></script>
+  <script src="/ablation/run-results.js" defer></script>
+  <script src="/ablation/app.js" defer></script>
+  <script src="/ablation/voyage-toolbar.js" defer></script>
 </head>
 <body class="focused-workbench vg-app vg-fullscreen">
   <a class="skip-link" href="#main">跳到实验内容</a>
   <header class="global-header vg-header">
-    <div class="header-start"><button class="vg-iconbtn history-toggle" data-action="toggle-history" aria-controls="session-history" aria-expanded="false" aria-label="展开会话历史" title="展开会话历史"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7 3v14M4.5 6h.5m-.5 3h.5m-.5 3h.5"/></svg></button><a href="/" class="brand" aria-label="Ablation 首页" title="Ablation · 提示词原版与变体对比"><svg class="brand-mark" viewBox="0 0 32 32" width="29" height="29" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="11" height="22" rx="3" opacity=".65"/><path d="M5.5 11h4m-4 5h4m-4 5h4" opacity=".65"/><rect class="brand-variant" x="19" y="5" width="11" height="22" rx="3"/><path class="brand-variant" d="M22.5 11h4m-4 10h4"/><path d="M15 16h2"/></svg><strong>ablation</strong></a></div>
+    <div class="header-start"><button class="vg-iconbtn history-toggle" data-action="toggle-history" aria-controls="session-history" aria-expanded="false" aria-label="展开会话历史" title="展开会话历史"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7 3v14M4.5 6h.5m-.5 3h.5m-.5 3h.5"/></svg></button><a href="/ablation/" class="brand" aria-label="Ablation 首页" title="Ablation · 提示词原版与变体对比"><svg class="brand-mark" viewBox="0 0 32 32" width="29" height="29" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="11" height="22" rx="3" opacity=".65"/><path d="M5.5 11h4m-4 5h4m-4 5h4" opacity=".65"/><rect class="brand-variant" x="19" y="5" width="11" height="22" rx="3"/><path class="brand-variant" d="M22.5 11h4m-4 10h4"/><path d="M15 16h2"/></svg><strong>ablation</strong></a></div>
     <div class="header-actions"><button class="vg-btn btn" data-action="import">导入数据</button><button class="vg-btn btn quiet" id="update-indicator" data-action="updates" hidden>有可用更新</button><div id="voyage-toolbar" aria-label="外观与工具"></div><button class="vg-iconbtn" data-action="settings" aria-label="设置与版本" title="设置与版本"><svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-7 1v4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button></div>
   </header>
   <div id="upgrade-banner" class="upgrade-banner" role="status" aria-live="polite" hidden><span>Ablation 已升级到 <strong id="upgrade-version"></strong>，刷新页面以加载新版界面。</span><button class="vg-btn btn" data-action="reload-ui">刷新页面</button></div>
