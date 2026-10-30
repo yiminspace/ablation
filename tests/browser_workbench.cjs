@@ -74,7 +74,7 @@ async function assertPhysicalBookmarks(page,count){
   assert.equal(geometry.bookmarks.length,count,`All ${count} page bookmarks remain visible`);
   assert.equal(geometry.bookmarks.filter(item=>item.current==='page').length,1,'Exactly one ordinary bookmark is current');
   const current=geometry.bookmarks.find(item=>item.current==='page');
-  assert(current.main&&current.id===geometry.active&&current.pressed==='true','Current bookmark is attached directly to the live page');
+  assert(!current.main&&current.id===geometry.active&&current.pressed==='true','Current bookmark stays in its fixed stack position');
   assert.notEqual(geometry.stackRole,'tablist','Bookmarks are attached page controls rather than a separate navbar');
   assert(Math.abs(geometry.panel.top)<1&&geometry.panel.height>=geometry.viewport.height-1,'Live page remains top-aligned and full height');
   assert(geometry.panel.left>=0&&geometry.panel.right<=geometry.viewport.width+1,'Live page fits the right side of the viewport');
@@ -82,7 +82,7 @@ async function assertPhysicalBookmarks(page,count){
   assert(['hidden','clip'].includes(geometry.clip.overflow),'Page viewport clips content during physical expansion');
   assert(geometry.bookmarks.every(item=>item.owner===item.id&&item.role!=='tab'),'Each ordinary button belongs to its corresponding page');
   assert(geometry.bookmarks.every(item=>Math.abs(item.frame.left-geometry.panel.left)<2&&Math.abs(item.frame.top)<1&&Math.abs(item.frame.width-geometry.panel.width)<2&&item.frame.height>=geometry.viewport.height-1),'Background pages share the live page rectangle; there are no detached full-height peer rails');
-  assert(geometry.bookmarks.every(item=>item.label.height>=100&&item.label.height<=140&&item.label.top>=0&&item.label.bottom<=180&&item.label.right<=geometry.panel.left+2&&item.horizontal&&item.status&&item.reachable&&item.number.left>=-1&&item.number.right<=geometry.viewport.width+1),'Every attached bookmark/status protrudes only in the top-left and remains directly clickable');
+  assert(geometry.bookmarks.every(item=>item.label.height>=100&&item.label.height<=140&&item.label.top>=0&&item.label.bottom<=Math.min(geometry.viewport.height,132+(count-1)*3)&&item.label.right<=geometry.panel.left+2&&item.horizontal&&item.status&&item.reachable&&item.number.left>=-1&&item.number.right<=geometry.viewport.width+1),'Every attached bookmark/status protrudes only in the top-left and remains directly clickable');
   assert(geometry.bookmarks.every(item=>item.neck.content!=='none'&&item.neck.width>=geometry.panel.left-item.label.right-2),'Bookmark necks connect each index sticker to its page');
   return geometry;
 }
@@ -209,31 +209,29 @@ async function main(){
   await assertPhysicalBookmarks(page,6);
   const edgeSelector='#run-drawer-stack .run-drawer-sheet[data-visible="true"] > .run-drawer-spine[data-run-detail]';
   const edgeRun=await page.locator(edgeSelector).first().getAttribute('data-run-detail');
+  const before=await assertPhysicalBookmarks(page,6);
   const switching=await sampleMotion(page,edgeSelector);
-  assert(switching.states.includes('running'),'Selecting a physical bookmark starts whole-page motion');
-  assert(switching.sameBookmark,'The chosen actual bookmark DOM node moves into the live page');
-  const [start,quarter,middle,end]=switching.samples;
-  assert(start.width<end.width-100&&quarter.width>start.width+20,'Incoming whole page expands from the chosen bookmark');
-  assert(switching.samples.every(sample=>Math.abs(sample.incoming.width-end.incoming.width)<2),'Page content keeps a fixed reading width while its viewport opens');
-  assert(Math.abs(start.bookmark.left-switching.origin.left)<2&&Math.abs(start.bookmark.top-switching.origin.top)<2,'Chosen bookmark starts at its original physical position');
-  assert(switching.samples.every(sample=>Math.abs(sample.bookmark.right-sample.left)<2&&Math.abs(sample.bookmark.top-sample.top-12)<2),'Incoming page and attached bookmark move together');
-  assert(start.outgoing&&quarter.outgoing,'Previous foreground remains visible while it retreats');
-  assert(quarter.outgoing.width<start.outgoing.width-20&&end.outgoing.width<5,'Previous whole page collapses into its attached index sticker');
-  assert(switching.samples.every(sample=>Math.abs(sample.outgoing.bookmark.right-sample.outgoing.left)<2&&Math.abs(sample.outgoing.bookmark.top-sample.outgoing.top-12)<2),'Outgoing page and its bookmark move together');
-  assert.deepEqual({inert:switching.backplateContent.inert,hidden:switching.backplateContent.hidden,ids:switching.backplateContent.ids},{inert:true,hidden:'true',ids:0});
-  assert(switching.backplateContent.content>30,'Stable backplate retains actual previous page content');
-  assert(switching.samples.every(sample=>sample.backplate&&sample.backplate.left<=end.left+1&&sample.backplate.right>=end.left+end.width-1&&sample.backplate.top<=1&&sample.backplate.height>=999&&sample.backplate.opaque),'Stable opaque content covers the right edge throughout the physical page transition');
+  assert.equal(switching.states.length,0,'Selecting a bookmark updates content without page motion');
+  assert.equal(switching.outgoingContent,null,'Switching needs no fading page clone');
+  const after=await assertPhysicalBookmarks(page,6);
+  const positions=geometry=>geometry.bookmarks.map(item=>({id:item.id,label:item.label})).sort((a,b)=>a.id.localeCompare(b.id));
+  assert.deepEqual(positions(after),positions(before),'All bookmark positions and sizes stay fixed after selection');
+  await page.locator(edgeSelector).first().hover();
+  const hover=await page.locator(edgeSelector).first().evaluate(button=>{
+    const style=getComputedStyle(button);const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+    const context=canvas.getContext('2d');context.fillStyle=style.backgroundColor;context.fillRect(0,0,1,1);
+    return {opacity:Number(style.opacity),alpha:context.getImageData(0,0,1,1).data[3]};
+  });
+  assert.deepEqual(hover,{opacity:1,alpha:255},'Hover background stays fully opaque');
   assert.equal(await page.locator('#run-drawer-panel').getAttribute('data-run-id'),edgeRun);
-  assert.equal(switching.keyboardUsesCurrentPanel,true,'Keyboard End selects real panel tab while clone exists');
-  assert.deepEqual({inert:switching.outgoingContent.inert,hidden:switching.outgoingContent.hidden,ids:switching.outgoingContent.ids},{inert:true,hidden:'true',ids:0});
   const rapid=await page.evaluate(()=>{
-    const next=()=>[...document.querySelectorAll('#run-drawer-stack .run-drawer-sheet[data-visible="true"] > .run-drawer-spine[data-run-detail]')].find(button=>getComputedStyle(button).visibility!=='hidden');
+    const next=()=>[...document.querySelectorAll('#run-drawer-stack .run-drawer-sheet[data-visible="true"] > .run-drawer-spine[data-run-detail]')].find(button=>getComputedStyle(button).visibility!=='hidden'&&button.getAttribute('aria-current')!=='page');
     next().click();const first=document.querySelectorAll('.run-drawer-outgoing').length;
     next().click();const second=document.querySelectorAll('.run-drawer-outgoing').length;
     const active=document.querySelector('#run-drawer-panel').dataset.runId;
     document.querySelector('[data-action="close-run-drawer"]').click();return {first,second,active};
   });
-  assert(rapid.first<=1&&rapid.second<=1,'Rapid switching replaces the previous outgoing clone');
+  assert(rapid.first===0&&rapid.second===0,'Rapid switching creates no animated clones');
   await page.locator('#run-drawer').waitFor({state:'hidden'});
   await until(()=>page.evaluate(()=>!document.querySelector('.run-drawer-outgoing,.run-drawer-backplate')&&![...document.querySelectorAll('[data-motion-hidden]')].some(element=>getComputedStyle(element).visibility==='hidden')&&!document.getAnimations().some(animation=>animation.playState==='running'&&animation.effect?.target?.closest('#run-drawer'))));
   await page.locator('.run-batch-open').first().click();await settleDrawer(page);
@@ -254,9 +252,8 @@ async function main(){
   await raw.evaluate(node=>node.scrollTop=240);
   const rawScroll=await raw.evaluate(node=>node.scrollTop);assert(rawScroll>0);
   const rawTransition=await sampleMotion(page,'#run-drawer-stack .run-drawer-sheet[data-visible="true"] [data-run-detail="run_fixture_2"]');
-  assert(Math.abs(rawTransition.outgoingContent.rawScrollTop-rawScroll)<2,'Outgoing raw clone retains the reading position');
-  assert.equal(rawTransition.keyboardUsesCurrentPanel,true);
-  assert.deepEqual({inert:rawTransition.outgoingContent.inert,hidden:rawTransition.outgoingContent.hidden,ids:rawTransition.outgoingContent.ids},{inert:true,hidden:'true',ids:0});
+  assert.equal(rawTransition.states.length,0,'Raw view switches immediately without page motion');
+  assert.equal(rawTransition.outgoingContent,null);
   await page.locator('.run-drawer-tabs [data-run-view="checks"]').click();
   // A missing tool and a non-tool assertion still lead to the saved model output.
   for(const index of [1,2]){
@@ -318,16 +315,28 @@ async function main(){
     assert.equal(await page.locator('#run-drawer-panel').getAttribute('data-run-id'),'run_fixture_12');
     await page.keyboard.press('Escape');await page.locator('#run-drawer').waitFor({state:'hidden'});
   }
+  await page.setViewportSize({width:1920,height:1000});
+  for(let index=13;index<=30;index++)fixture.runs.push({...fixture.runs[5],id:`run_fixture_${index}`,repeat:index-3});
+  fixture.revision++;
+  await until(async()=>await page.locator('.history-batch').getAttribute('data-run-count')==='30');
+  await page.locator('.run-batch-open').first().click();await settleDrawer(page);
+  const thirty=await assertPhysicalBookmarks(page,30);
+  for(const runId of ['run_fixture_30','run_fixture_1','run_fixture_15']){
+    await selectReplay(page,runId);
+    const selected=await assertPhysicalBookmarks(page,30);
+    assert.deepEqual(positions(selected),positions(thirty),'Thirty replay bookmarks retain their geometry across selection');
+  }
   if(process.env.ABLATION_SCREENSHOTS){
     fs.mkdirSync(process.env.ABLATION_SCREENSHOTS,{recursive:true});
-    await page.setViewportSize({width:1440,height:1000});await page.locator('.run-batch-open').first().click();
+    await page.setViewportSize({width:1440,height:1000});
+    if(!await page.locator('#run-drawer').evaluate(node=>node.open))await page.locator('.run-batch-open').first().click();
     await page.screenshot({path:path.join(process.env.ABLATION_SCREENSHOTS,'replay-failure-details.png'),fullPage:true});
     await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
     await page.locator('.bf-message-scroll').waitFor();
     await page.screenshot({path:path.join(process.env.ABLATION_SCREENSHOTS,'stacked-replay-drawers.png'),fullPage:true});
   }
   assert.deepEqual(mutations,[]);assert.deepEqual(externalRequests,[]);assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({latestPolling:true,historicalInspection:true,draftsPreserved:true,failureReasons:true,physicalPageBookmarks:true,normalMotion:true,transitionCloneSafe:true,stableContentCoverage:true,rapidSwitchClose:true,reducedMotion:true,allTwelveBookmarks:true,fullWidthContent:true,compact631:true,readingPosition:true,keyboardClose:true,mobile:true,pageErrors:errors}));
+  console.log(JSON.stringify({latestPolling:true,historicalInspection:true,draftsPreserved:true,failureReasons:true,physicalPageBookmarks:true,normalMotion:true,fixedBookmarkPositions:true,opaqueHover:true,rapidSwitchClose:true,reducedMotion:true,allTwelveBookmarks:true,allThirtyBookmarks:true,fullWidthContent:true,compact631:true,readingPosition:true,keyboardClose:true,mobile:true,pageErrors:errors}));
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   if(browser)await browser.close();

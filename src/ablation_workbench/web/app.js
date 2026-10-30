@@ -15,7 +15,7 @@
   const drawerMemory=new Map();
   const drawerMemoryKey=() => `${state.experiment?.id}|${drawerRunId}`;
   let drawerTargetTool;
-  let drawerBatchKey=null,drawerTransition=0,drawerAnimations=[];
+  let drawerBatchKey=null,drawerAnimations=[];
 
   function readStorage(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
   function persist() {
@@ -628,7 +628,6 @@
     if(focus)(open?$('[aria-current="true"]',picker):$('#run-drawer-all'))?.focus({preventScroll:true});
   }
   function stopDrawerMotion() {
-    drawerTransition++;
     drawerAnimations.forEach(animation=>animation.cancel());drawerAnimations=[];
     $$('.run-drawer-outgoing,.run-drawer-backplate',$('#run-drawer')).forEach(sheet=>sheet.remove());
     $$('[data-motion-hidden]',$('#run-drawer')).forEach(label=>label.removeAttribute('data-motion-hidden'));
@@ -637,49 +636,10 @@
   function liveBookmarks() {
     return $$('.run-drawer-spine',$('#run-drawer')).filter(button=>!button.closest('.run-drawer-outgoing,.run-drawer-backplate'));
   }
-  function cloneOutgoingDrawer() {
-    const panel=$('#run-drawer-panel'),viewport=$('#run-drawer-viewport');
-    const snapshot=source=>{
-      const clone=source.cloneNode(true),sources=[source,...source.querySelectorAll('*')],copies=[clone,...clone.querySelectorAll('*')];
-      const positions=sources.map((element,index)=>element.scrollTop||element.scrollLeft?[index,element.scrollTop,element.scrollLeft]:null).filter(Boolean);
-      copies.forEach(element=>{element.removeAttribute('id');element.removeAttribute('autofocus');element.removeAttribute('aria-controls');element.removeAttribute('aria-labelledby');});
-      return {clone,restore:()=>positions.forEach(([index,top,left])=>{copies[index].scrollTop=top;copies[index].scrollLeft=left;})};
-    };
-    const page=snapshot(panel),body=snapshot(viewport),clone=page.clone,rect=panel.getBoundingClientRect();
-    clone.classList.add('run-drawer-outgoing');clone.inert=true;clone.setAttribute('aria-hidden','true');
-    clone.dataset.outgoingRun=drawerRunId;
-    clone.style.width=`${rect.width}px`;clone.style.left=`${rect.left}px`;clone.style.top=`${rect.top}px`;
-    $('.run-drawer-surface',clone).style.width=`${rect.width}px`;
-    const backplate=document.createElement('div');backplate.className='run-drawer-backplate';backplate.inert=true;backplate.setAttribute('aria-hidden','true');
-    backplate.style.width=`${rect.width}px`;backplate.append(body.clone);
-    $('.run-drawer-surface',backplate).style.width=`${rect.width}px`;
-    $('#run-drawer').append(backplate,clone);page.restore();body.restore();
-    return clone;
-  }
-  function animateRunDrawer(origin,outgoing,opening) {
-    const panel=$('#run-drawer-panel'),surface=$('#run-drawer-surface'),rect=panel.getBoundingClientRect();
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){outgoing?.remove();return;}
-    const token=drawerTransition,duration=320,easing='cubic-bezier(.22,.9,.22,1)';
-    const active=$('.run-drawer-spine',panel),activeRect=active.getBoundingClientRect();
-    const labelTop=activeRect.top-rect.top,step=activeRect.width;
-    surface.style.width=`${rect.width}px`;
-    if(opening){
-      drawerAnimations.push(panel.animate([{transform:`translateX(${Math.min(96,rect.width)}px)`,opacity:.6},{transform:'translateX(0)',opacity:1}],{duration:280,easing}));
-    }else{
-      drawerAnimations.push(panel.animate([{left:`${origin?origin.right:rect.left}px`,top:`${origin?origin.top-labelTop:rect.top}px`,width:'0px'},{left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`}],{duration,easing}));
-      drawerAnimations.push(surface.animate([{opacity:.8},{opacity:1}],{duration:120,delay:60}));
-      if(outgoing){
-        const old=outgoing.getBoundingClientRect(),oldLabel=$('.run-drawer-spine',outgoing).getBoundingClientRect();
-        const previous=liveBookmarks().find(button=>button.dataset.runDetail===outgoing.dataset.outgoingRun),target=previous?.getBoundingClientRect();
-        if(previous)previous.dataset.motionHidden='true';
-        drawerAnimations.push(outgoing.animate([{left:`${old.left}px`,top:`${old.top}px`,width:`${old.width}px`,opacity:1},{left:`${target?target.right:rect.left}px`,top:`${target?target.top-(oldLabel.top-old.top):0}px`,width:'0px',opacity:.9}],{duration,easing,fill:'forwards'}));
-      }
-    }
-    Promise.allSettled(drawerAnimations.map(animation=>animation.finished)).then(()=>{
-      if(token!==drawerTransition)return;
-      surface.style.width='';outgoing?.remove();$('.run-drawer-backplate',$('#run-drawer'))?.remove();
-      $$('[data-motion-hidden]',$('#run-drawer')).forEach(label=>label.removeAttribute('data-motion-hidden'));drawerAnimations=[];
-    });
+  function animateRunDrawer() {
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const panel=$('#run-drawer-panel'),width=panel.getBoundingClientRect().width;
+    drawerAnimations.push(panel.animate([{transform:`translateX(${Math.min(96,width)}px)`},{transform:'translateX(0)'}],{duration:280,easing:'cubic-bezier(.22,.9,.22,1)'}));
   }
   function renderRunStack(batch,run) {
     const stack=$('#run-drawer-stack'),key=`${state.experiment.id}|${run.batch_id || run.id}`;
@@ -689,21 +649,20 @@
     const width=$('#run-drawer').clientWidth,n=batch.length,preferredEdge=width>=1000?(n<=6?36:28):(n<=6?28:20);
     const minimumPanel=width>=1000?560:width>=480?360:220;
     const edge=Math.max(0,Math.min(preferredEdge,Math.max(14,(width-minimumPanel)/n),(width-Math.min(160,width))/n));
-    const panelWidth=Math.min(1040,width-n*edge),backOrder=batch.filter(item=>item.id!==run.id).map(item=>item.id).reverse();
+    const panelWidth=Math.min(1040,width-n*edge);
     $('#run-drawer').style.setProperty('--run-panel-width',`${panelWidth}px`);
     $('#run-drawer').style.setProperty('--run-bookmark-step',`${edge}px`);
     $('#run-drawer').style.setProperty('--run-index-size',edge<18?'10px':'11px');
-    $('#run-drawer-panel').style.setProperty('--bookmark-depth',1);
     const statusText=item=>activeStatus(item.status)?'运行中':item.error?'执行错误':item.passed===false?'未通过':item.passed===true?'通过':'未评分';
     for(const [index,item] of batch.entries()){
       const name=item.candidate==='baseline'?'原提示词':label(state.experiment.candidates,item.candidate),context=`${name} · ${label(state.experiment.scenarios,item.scenario)} · 第 ${item.repeat ?? 1} 次 · ${statusText(item)}`;
       let sheet=$$('[data-stack-run]',stack).find(element=>element.dataset.stackRun===item.id);
       if(!sheet){sheet=document.createElement('section');sheet.className='run-drawer-sheet';sheet.dataset.stackRun=item.id;sheet.setAttribute('role','presentation');stack.append(sheet);}
-      const selected=item.id===run.id,depth=selected?1:backOrder.indexOf(item.id)+2;
+      const selected=item.id===run.id,depth=batch.length-index;
       let button=liveBookmarks().find(button=>button.dataset.runDetail===item.id);
       if(!button){button=document.createElement('button');button.className='run-drawer-spine';button.dataset.runDetail=item.id;button.innerHTML=`<span class="spine-number">${index+1}</span><span class="spine-status-dot" aria-hidden="true"></span>`;}
-      const owner=selected?$('#run-drawer-panel'):sheet;if(button.parentElement!==owner)owner.prepend(button);
-      sheet.hidden=selected;sheet.inert=selected;sheet.dataset.visible=String(!selected);sheet.style.zIndex=batch.length-depth+1;sheet.style.setProperty('--bookmark-depth',depth);
+      if(button.parentElement!==sheet)sheet.prepend(button);
+      sheet.dataset.visible='true';sheet.style.zIndex=batch.length-depth+1;sheet.style.setProperty('--bookmark-depth',depth);
       button.id=`run-drawer-bookmark-${item.id}`;button.dataset.bookmarkIndex=index;button.disabled=false;button.title=context;button.setAttribute('aria-label',`回放 ${index+1}：${context}`);button.removeAttribute('role');button.removeAttribute('aria-selected');button.setAttribute('aria-current',selected?'page':'false');button.setAttribute('aria-pressed',String(selected));button.tabIndex=selected?0:-1;
       if(selected)$('#run-drawer-surface').setAttribute('aria-labelledby',button.id);
       $('.spine-status-dot',button).className=`spine-status-dot ${item.passed===false||item.error?'error':item.passed===true?'success':'warning'}`;
@@ -754,9 +713,7 @@
     if(!state.experiment?.runs.some(run=>run.id===runId))return;
     const changed=drawerRunId!==runId,opening=!$('#run-drawer').open,pickerWasOpen=!$('#run-drawer-picker').hidden;
     stopDrawerMotion();
-    const bookmark=liveBookmarks().find(button=>button.dataset.runDetail===runId),origin=bookmark?.getBoundingClientRect();
     saveDrawerPosition();
-    const outgoing=!opening&&changed&&!matchMedia('(prefers-reduced-motion: reduce)').matches?cloneOutgoingDrawer():null;
     setRunPicker(false);
     if(changed) {
       globalThis.AblationMessages.clear();$('#run-drawer-messages').replaceChildren();
@@ -772,7 +729,7 @@
       $(`#run-drawer-surface .run-drawer-tabs [data-run-view="${name}"]`).setAttribute('aria-selected',String(name===drawerView));
     }
     renderRunDrawer();restoreDrawerPosition();
-    if(changed||opening)animateRunDrawer(origin,outgoing,opening);
+    if(opening)animateRunDrawer();
     if(!opening)(pickerWasOpen?$('#run-drawer-all'):liveBookmarks().find(button=>button.dataset.runDetail===runId))?.focus({preventScroll:true});
     const run=state.experiment.runs.find(item=>item.id===runId);
     $$('.run-batch-open').forEach(button=>button.setAttribute('aria-current',String(button.closest('[data-batch-group]').dataset.batchGroup===(run.batch_id || run.id))));

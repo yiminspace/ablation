@@ -227,11 +227,11 @@
 .run-drawer-sheet[data-visible=false]{visibility:hidden;opacity:0;pointer-events:none}
 .run-drawer-spine{position:absolute;left:calc(-1*var(--bookmark-depth,1)*var(--run-bookmark-step));top:calc(12px + (var(--bookmark-depth,1) - 1)*3px);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;width:var(--run-bookmark-step);height:120px;min-width:0;border:1px solid var(--border);border-right:0;border-radius:6px 0 0 6px;background:var(--bg);color:var(--muted);padding:18px 0 0;text-align:center;box-shadow:-3px 2px 8px #0002;pointer-events:auto;overflow:visible}
 .run-drawer-spine[data-motion-hidden=true]{visibility:hidden}
-.run-drawer-spine:after{content:'';position:absolute;left:100%;top:-1px;bottom:-1px;width:calc((var(--bookmark-depth,1) - 1)*var(--run-bookmark-step) + 1px);border-block:1px solid var(--border);background:inherit;pointer-events:none}
-.run-drawer-spine:hover{background:var(--blue-bg)}
-.run-drawer-spine[aria-current=true],.run-drawer-spine[aria-pressed=true]{border-left-color:var(--acc);background:var(--blue-bg);color:var(--fg)}
+.run-drawer-spine:after{content:'';position:absolute;left:100%;top:-1px;bottom:-1px;width:calc((var(--bookmark-depth,1) - 1)*var(--run-bookmark-step) + 1px);border-block:1px solid var(--border);background:var(--bg);pointer-events:none}
+.run-drawer-spine:hover{background:color-mix(in srgb,var(--acc) 8%,var(--bg));opacity:1}
+.run-drawer-spine[aria-current=true],.run-drawer-spine[aria-pressed=true]{border-left-color:var(--acc);background:color-mix(in srgb,var(--acc) 14%,var(--bg));color:var(--fg)}
 .run-drawer-spine[aria-current=true] .spine-number,.run-drawer-spine[aria-pressed=true] .spine-number{color:var(--fg)}
-.run-drawer-spine:focus-visible{outline-offset:-3px;background:var(--blue-bg)}
+.run-drawer-spine:focus-visible{outline-offset:-3px;background:color-mix(in srgb,var(--acc) 14%,var(--bg))}
 .spine-number{font:var(--run-index-size,11px)/1.5 var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);flex:none;white-space:nowrap}
 .spine-status-dot{display:block;width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
 .spine-status-dot.success{background:var(--green)}

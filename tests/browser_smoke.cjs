@@ -204,8 +204,8 @@ async function main(){
   await page.locator('.batch-copy strong').first().click();
   await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
   await page.locator('#run-drawer .bifrost-messages').waitFor();
-  assert.equal(await page.locator('#run-drawer-stack .run-drawer-sheet[data-visible="true"]').count(),1);
-  assert.equal(await page.locator('#run-drawer-panel > .run-drawer-spine').count(),1);
+  assert.equal(await page.locator('#run-drawer-stack .run-drawer-sheet[data-visible="true"]').count(),2);
+  assert.equal(await page.locator('#run-drawer-panel > .run-drawer-spine').count(),0);
   const baselineSpine=page.locator(`#run-drawer-stack .run-drawer-sheet[data-visible="true"] [data-run-detail="${exp.runs[0].id}"]`);
   if(await page.locator('#run-drawer-panel').getAttribute('data-run-id')!==exp.runs[0].id)await baselineSpine.locator('.spine-number').click();
   await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
