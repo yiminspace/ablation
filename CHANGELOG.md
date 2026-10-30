@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.2 (2026-10-30)
+
+### Bug Fixes
+
+- 固定回放书签位置并保持悬停背景不透明 ([#14](https://github.com/yiminspace/ablation/pull/14),
+  [`4b6c727`](https://github.com/yiminspace/ablation/commit/4b6c727127cdc4e633e4320bef39846d21465da6))
+
+
 ## v0.3.1 (2026-10-29)
 
 ### Bug Fixes
