@@ -315,3 +315,17 @@ a.line-number{display:block;color:var(--muted);cursor:pointer;scroll-margin-bloc
 a.line-number:hover{color:var(--blue);text-decoration:underline;background:var(--blue-bg)}
 .diff-cell.line-selected{background:color-mix(in srgb,var(--warning) 20%,var(--bg));box-shadow:inset 3px 0 var(--warning)}
 .diff-cell.line-selected .line-number{color:var(--fg)}
+
+/* Continuation evidence is separate from the candidate diff. */
+.run-drawer-continuation{overflow:auto;padding:20px;min-height:0}
+.continuation-path{display:grid;gap:8px;margin:16px 0}
+.continuation-step{display:grid;gap:5px;text-align:left;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--subtle);color:inherit;cursor:pointer}
+.continuation-step.on{border-color:var(--blue)}
+.continuation-step code,.continuation-step span{font-size:12px;overflow-wrap:anywhere}
+.continuation-rationale{white-space:pre-wrap;overflow-wrap:anywhere}
+.run-drawer-continuation pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+
+.continuation-added{background:var(--add);padding:10px}
+.continuation-removed{background:var(--del);padding:10px}
+
+.continuation-count{background:var(--blue-bg);color:var(--blue);font-weight:600}

@@ -33,6 +33,16 @@ The GUI is the human interface for inspecting diffs and writing review comments.
 
 Explain observed behavior and uncertainty; repeating one example does not demonstrate general reliability. Model tool calls are recorded evidence, not executed actions or proof of a real-world outcome.
 
+## Diagnose failures and continue dynamically
+
+A failed assertion describes that recorded model call, not automatically the entire task. Before editing a candidate or repeating a failed run, inspect its actual request, output and checks. Distinguish a behavioral miss, an unfinished tool/skill turn, an incorrect assertion or reconstructed request, and an execution/transport failure. Explain the evidence for the diagnosis; keep uncertainty explicit.
+
+When the model has requested a tool or skill, obtain the real runtime's loaded instructions, tool schema and return value. Use `ablation continue --help` to append a linked replay from that run with the matching call IDs, a runtime context patch and a rationale describing its origin. The tool never executes business actions. Supplied or synthetic results must retain their provenance; do not invent a successful result. A response without a tool call needs investigation or a new candidate, not a fabricated continuation.
+
+Continuation context belongs to the run record, not the candidate diff. Do not add permanent instructions, expand skill specs in advance, or force a final response merely to satisfy a single-call check. Candidate edits describe only proposed production changes. A runtime-loaded prompt belongs in `--context-patch`, with its matching return values in `--tool-results`; the actual response/history is linked automatically. Each round preserves its own checks; diagnose a failed check rather than changing it simply to turn it green.
+
+Explore with bounded calls until the complete path is understood. Then hold the candidate, scenario, assertions and runtime-loading method fixed for repeats, deriving each continuation from that repeat's actual tool calls. Compare complete paths under the same conditions. Report intermediate failures, final outcomes, call counts, costs and incomplete paths separately. Read continuation records through CLI JSON; the GUI shows them beside per-round output and checks, outside the candidate diff.
+
 ## Review loop
 
 Review handoffs contain experiment and review IDs, the reviewed candidate/scenario, anchored snippets, user comments, and intent. Reuse these IDs and the explicit workspace so replies return to the existing GUI.
