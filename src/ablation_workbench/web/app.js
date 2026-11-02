@@ -66,6 +66,49 @@
   }
   function editing() { return Boolean(document.activeElement?.matches('textarea,input,select')) || Boolean($('#modal').open); }
 
+  let lineAnchor=null, lineFocus=null, pendingLineScroll=false;
+  function readLineAnchor() {
+    const match=/^#diff-(changes|prompt|input|request|response|checks|source)-([LR])([1-9]\d*)(?:-\2([1-9]\d*))?$/.exec(location.hash);
+    if(!match)return null;
+    const start=Number(match[3]),end=Number(match[4] || match[3]);
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end))return null;
+    return {artifact:match[1],side:match[2],start:Math.min(start,end),end:Math.max(start,end)};
+  }
+  function clearLineAnchor() {
+    lineAnchor=null;lineFocus=null;pendingLineScroll=false;
+    if(location.hash.startsWith('#diff-')){const url=new URL(location.href);url.hash='';history.replaceState({},'',url);}
+  }
+  function restoreLineAnchor() {
+    lineAnchor=readLineAnchor();lineFocus=null;pendingLineScroll=Boolean(lineAnchor);
+    if(lineAnchor){state.artifact=lineAnchor.artifact;state.expanded=true;lineFocus={side:lineAnchor.side,line:lineAnchor.start};}
+  }
+  function lineSelected(side,line) {
+    return lineAnchor?.artifact===state.artifact&&lineAnchor.side===side&&line>=lineAnchor.start&&line<=lineAnchor.end;
+  }
+  function lineURL(side,start,end=start) {
+    const url=new URL(location.href);
+    url.searchParams.set('experiment',state.experiment.id);url.searchParams.set('candidate',state.candidate);url.searchParams.set('scenario',state.scenario);
+    url.hash=`diff-${state.artifact}-${side}${start}${end===start?'':`-${side}${end}`}`;
+    return url;
+  }
+  function lineLink(side,line) {
+    return line==null?'<span class="line-number"></span>':`<a class="line-number" href="${esc(lineURL(side,line).href)}" data-line-side="${side}" data-line="${line}" title="定位此行；Shift 点击选择多行" aria-label="${side==='L'?'旧版':'新版'}第 ${line} 行">${line}</a>`;
+  }
+  function selectDiffLine(side,line,extend) {
+    const pivot=extend&&lineFocus?.side===side?lineFocus.line:line;
+    if(!extend||lineFocus?.side!==side)lineFocus={side,line};
+    lineAnchor={artifact:state.artifact,side,start:Math.min(pivot,line),end:Math.max(pivot,line)};
+    state.followLatest=false;
+    history.pushState({},'',lineURL(side,lineAnchor.start,lineAnchor.end));
+    renderDiff();
+    $(`#diff-file [data-line-side="${side}"][data-line="${line}"]`)?.focus({preventScroll:true});
+  }
+  function paintLineAnchor() {
+    $$('#diff-file [data-line-side]').forEach(link=>link.closest('.diff-cell').classList.toggle('line-selected',lineSelected(link.dataset.lineSide,Number(link.dataset.line))));
+    const copy=$('[data-action="copy-line-link"]');if(copy)copy.hidden=!lineAnchor;
+    if(pendingLineScroll){pendingLineScroll=false;$('#diff-file .line-selected')?.scrollIntoView({block:'center'});}
+  }
+
   function updateCandidateURL(push=false) {
     const url=new URL(location.href);url.searchParams.set('experiment',state.experiment.id);
     if(state.followLatest&&!state.snapshotReview)url.searchParams.delete('candidate');else url.searchParams.set('candidate',state.candidate);
@@ -74,6 +117,7 @@
   }
   function viewCandidateVersion(candidate,{preserveScenario=false}={}) {
     if(!state.experiment?.candidates?.some(item=>item.id===candidate))return;
+    clearLineAnchor();
     if(state.candidate!==candidate){stashEditor();state.editor=null;persist();}
     const scenario=preserveScenario&&state.experiment.scenarios?.some(item=>item.id===state.scenario)?state.scenario:state.experiment.runs?.findLast(run=>run.candidate===candidate)?.scenario || 'original';
     state.snapshotReview=null;state.followLatest=candidate===latestCandidateId();state.base='baseline';state.candidate=candidate;
@@ -137,7 +181,8 @@
       const params=new URL(location.href).searchParams;
       const requestedCandidate=updateURL?null:params.get('candidate'),requestedScenario=updateURL?null:params.get('scenario');
       state.base='baseline';state.candidate=experiment.candidates?.some(c=>c.id===requestedCandidate)?requestedCandidate:experiment.candidates?.at(-1)?.id || 'baseline';state.scenario=experiment.scenarios?.some(s=>s.id===requestedScenario)?requestedScenario:experiment.runs?.findLast(r=>r.candidate===state.candidate)?.scenario || 'original';state.artifact='changes';state.diff=null;state.diffKey='';state.expanded=false;
-      state.followLatest=state.candidate===latestCandidateId();
+      state.followLatest=state.candidate===latestCandidateId()&&!requestedCandidate;
+      if(updateURL)clearLineAnchor();else restoreLineAnchor();
       if (updateURL) { const u=new URL(location.href);u.searchParams.set('experiment',experiment.id);u.searchParams.delete('candidate');u.searchParams.delete('scenario');history.pushState({},'',u); }
       $('#empty-state').hidden=true; $('#experiment').hidden=false;
       if(!state.experiments.some(e=>e.id===experiment.id))await refreshList();
@@ -274,7 +319,7 @@
     const plus=`<button type="button" class="line-plus" data-plus="${row.index}" aria-label="在${esc(row.new_line!=null?'新版第 '+row.new_line+' 行':'旧版第 '+row.old_line+' 行')}添加评论">+</button>`;
     const left=row.before!=null,right=row.after!=null;
     const [beforeHtml,afterHtml]=row.same?[esc(row.before),esc(row.after)]:inlineChanges(row.before,row.after);
-    return `<div class="diff-row"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}<span class="line-number">${esc(row.old_line)}</span><span class="line-sign">${!row.same&&left?'−':''}</span><code>${beforeHtml}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}<span class="line-number">${esc(row.new_line)}</span><span class="line-sign">${!row.same&&right?'+':''}</span><code>${afterHtml}</code></div></div>`;
+    return `<div class="diff-row"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}${lineLink('L',row.old_line)}<span class="line-sign">${!row.same&&left?'−':''}</span><code>${beforeHtml}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}${lineLink('R',row.new_line)}<span class="line-sign">${!row.same&&right?'+':''}</span><code>${afterHtml}</code></div></div>`;
   }
   function explanationLinks(value) {
     const text=String(value), pattern=/\[([^\]\n]+)\]\((https:\/\/github\.com\/[^)\s]+)\)/g;
@@ -318,7 +363,7 @@
     if(state.editor&&matchesContext(state.editor.anchor))anchorComments.push(state.editor.anchor);
     for(let i=0;i<rows.length;i++)if(!rows[i].same||anchorComments.some(c=>sameAnchor(c,rowWithArtifact(rows[i]))))for(let j=Math.max(0,i-3);j<=Math.min(rows.length-1,i+3);j++)contextLines.add(j);
     if(!contextLines.size)for(let i=0;i<Math.min(rows.length,20);i++)contextLines.add(i);
-    const display=state.expanded?rows:rows.filter((_,i)=>contextLines.has(i)).slice(0,500);
+    const display=(state.expanded||lineAnchor)?rows:rows.filter((_,i)=>contextLines.has(i)).slice(0,500);
     function renderRowSet(display, showRationale) {
       let body='',groupOpen=false,rationaleShown=false,lastIndex=-1;
     for(let n=0;n<display.length;n++) {
@@ -333,7 +378,7 @@
     }
     let {body,lastIndex}=renderRowSet(display, true);
     const requirementGroups=(diff.change_groups || []).filter(group=>group.row_indices.length);
-    const grouped=['changes','prompt'].includes(state.artifact)&&state.grouping==='requirements'&&requirementGroups.length;
+    const grouped=['changes','prompt'].includes(state.artifact)&&state.grouping==='requirements'&&!lineAnchor&&requirementGroups.length;
     if(grouped) {
       const assigned=new Set();
       const owners=new Map();
@@ -368,7 +413,8 @@
     for(const review of state.experiment.reviews || [])if(review.base===state.base&&review.candidate===state.candidate&&review.scenario===state.scenario)(review.comments || []).forEach((comment,index)=>{if(comment.artifact===state.artifact&&!rows.some(row=>sameAnchor(comment,rowWithArtifact(row))))body+=`<details class="preview-details"><summary>查看旧版原文中的评论</summary><pre class="context-snippet">${esc('修改前：\n'+(comment.before||'')+'\n修改后：\n'+(comment.after||''))}</pre>${savedCommentMarkup(review,comment,index)}<button class="text-btn" data-jump-review="${esc(review.id)}" data-comment-index="${index}">查看位置</button></details>`;});
     const plus=rows.filter(r => !r.same&&r.after!=null).length,minus=rows.filter(r => !r.same&&r.before!=null).length;
     $('#diff-file').classList.toggle('unified',state.layout==='unified');
-    $('#diff-file').innerHTML=`${candidateContext()}<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions">${['changes','prompt'].includes(state.artifact)?`<div class="view-grouping" role="group" aria-label="改动组织方式"><button class="text-btn" data-grouping="requirements" aria-pressed="${state.grouping==='requirements'}">按需求变动</button><button class="text-btn" data-grouping="original" aria-pressed="${state.grouping==='original'}">按原文</button></div>`:''}<span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span>${['changes','prompt'].includes(state.artifact)?'<button class="text-btn" data-artifact="request">完整 JSON</button>':''}<button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
+    $('#diff-file').innerHTML=`${candidateContext()}<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions">${['changes','prompt'].includes(state.artifact)?`<div class="view-grouping" role="group" aria-label="改动组织方式"><button class="text-btn" data-grouping="requirements" aria-pressed="${state.grouping==='requirements'}">按需求变动</button><button class="text-btn" data-grouping="original" aria-pressed="${state.grouping==='original'}">按原文</button></div>`:''}<span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span>${['changes','prompt'].includes(state.artifact)?'<button class="text-btn" data-artifact="request">完整 JSON</button>':''}<button class="text-btn" data-action="copy-line-link" ${lineAnchor?'':'hidden'}>复制行链接</button><button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
+    paintLineAnchor();
     const notes=(Array.isArray(diff.notes)?diff.notes:diff.notes?[diff.notes]:[]).filter(n=>!/^Scenario:/.test(objectMessage(n)));
     const promptDiff=['changes','prompt'].includes(state.artifact);
     let status=promptDiff?'':effectSummary();
@@ -768,6 +814,8 @@
   }
 
   document.addEventListener('click', async event => {
+    const line=event.target.closest('[data-line-side]');
+    if(line&&!event.metaKey&&!event.ctrlKey&&!event.altKey){event.preventDefault();selectDiffLine(line.dataset.lineSide,Number(line.dataset.line),event.shiftKey);return;}
     const button=event.target.closest('button');if(!button||button.disabled)return;
     const action=button.dataset.action;
     try {
@@ -775,7 +823,7 @@
       if(button.dataset.selectExperiment){const wasOpen=document.body.classList.contains('history-open');closeModal();setHistoryOpen(false);await selectExperiment(button.dataset.selectExperiment);if(wasOpen)$('#main').focus({preventScroll:true});return;}
       if(button.dataset.viewCandidate){viewCandidateVersion(button.dataset.viewCandidate);renderExperiment();await loadDiff();return;}
       if(button.dataset.tab){if(button.dataset.tab==='diff'){showLatestCandidate();renderExperiment();await loadDiff();}else switchTab(button.dataset.tab);return;}
-      if(button.dataset.artifact){state.snapshotReview=null;state.artifact=button.dataset.artifact;state.expanded=false;renderExperiment();await loadDiff();return;}
+      if(button.dataset.artifact){clearLineAnchor();state.snapshotReview=null;state.artifact=button.dataset.artifact;state.expanded=false;renderExperiment();await loadDiff();return;}
       if(button.dataset.grouping){state.grouping=button.dataset.grouping;persist();renderDiff();return;}
       if(button.dataset.layout){state.layout=button.dataset.layout;persist();$$('[data-layout]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));renderDiff();return;}
       if(button.hasAttribute('data-plus')){openComment(Number(button.dataset.plus));return;}
@@ -820,6 +868,7 @@
         case 'copy-pending':await savePending(false);break;
         case 'dispatch-pending':await savePending(true);break;
         case 'copy-portable': {const area=$('#portable-review');try{await navigator.clipboard.writeText(area.value);toast('已复制，可以粘贴到对话。');}catch{area.focus();area.select();toast('请使用系统复制快捷键复制已选内容。');}break;}
+        case 'copy-line-link': {try{await navigator.clipboard.writeText(location.href);toast('已复制行链接，可以粘贴到对话。');}catch{openModal('copy','复制行链接',`<textarea id="portable-review" class="vg-input copy-preview" readonly>${esc(location.href)}</textarea><div class="form-actions"><button class="vg-btn btn" data-action="copy-portable">复制</button></div>`);}break;}
         case 'copy-artifact': {try{await navigator.clipboard.writeText(json(state.diff?.after) || '');toast('已复制右侧内容。');}catch{openModal('copy','复制右侧内容',`<textarea id="portable-review" class="vg-input copy-preview" readonly>${esc(json(state.diff?.after) || '')}</textarea><div class="form-actions"><button class="vg-btn btn" data-action="copy-portable">复制</button></div>`);}break;}
         case 'upgrade': {setFormBusy(true);try{const result=await api('/api/upgrade',{});$('#form-status').textContent=objectMessage(result.message || result.output || result.status || result);if(result.success||result.status==='completed')$('#form-status').textContent+='\n请重新启动 GUI，再核对安装版本。';}catch(error){errorInModal(error);}finally{setFormBusy(false);}break;}
       }
@@ -944,6 +993,7 @@
   $('#modal').addEventListener('cancel',event=>{if(state.busy){event.preventDefault();return;}state.modal=null;});
   $('#modal').addEventListener('close',()=>{state.modal=null;if(state.deferred){state.deferred=false;renderExperiment();loadDiff();}});
   document.addEventListener('focusout',()=>setTimeout(()=>{if(state.deferred&&!editing()){state.deferred=false;renderExperiment();loadDiff();}},0));
+  window.addEventListener('hashchange',()=>{restoreLineAnchor();if(state.experiment){switchTab('diff');renderExperiment();loadDiff();}});
   window.addEventListener('popstate',()=>{const exp=new URL(location.href).searchParams.get('experiment');if(exp)selectExperiment(exp,false);});
   window.addEventListener('beforeunload',()=>persist());
   window.addEventListener('pagehide',()=>{persist();stopUpdateEvents();stopDrawerMotion();});

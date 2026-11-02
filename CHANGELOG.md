@@ -2,6 +2,12 @@
 
 <!-- version list -->
 
+## Unreleased
+
+### Features
+
+- Diff 行号支持 URL 定位、Shift 多行选择与复制行链接，固定候选版本并在重新打开时高亮定位。
+
 ## v0.3.2 (2026-10-30)
 
 ### Bug Fixes
