@@ -8,6 +8,14 @@
 
 - Diff 行号支持 URL 定位、Shift 多行选择与复制行链接，固定候选版本并在重新打开时高亮定位。
 
+## v0.4.0 (2026-11-02)
+
+### Features
+
+- 支持悬停切换回放与滚轮联动阅读 ([#15](https://github.com/yiminspace/ablation/pull/15),
+  [`11a9d03`](https://github.com/yiminspace/ablation/commit/11a9d0315ae804f6bba4ad6bf233bb1b962c587f))
+
+
 ## v0.3.2 (2026-10-30)
 
 ### Bug Fixes
