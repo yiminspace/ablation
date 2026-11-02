@@ -113,6 +113,13 @@ def parser():
     run.add_argument("experiment"); run.add_argument("--candidate", action="append", dest="candidates", required=True)
     run.add_argument("--scenario", action="append", dest="scenarios", default=None)
     run.add_argument("--repeats", type=int, default=1); run.add_argument("--profile", required=True)
+    follow = sub.add_parser("continue", help="Continue a recorded tool call using explicitly supplied runtime context; tools are not executed")
+    follow.add_argument("experiment"); follow.add_argument("parent_run")
+    follow.add_argument("--tool-results", required=True, help="JSON list of call_id/output pairs")
+    follow.add_argument("--context-patch", required=True, help="JSON Patch for loaded instructions/tools, separate from candidate changes")
+    follow.add_argument("--rationale", required=True, help="Failure diagnosis and provenance of runtime context")
+    follow.add_argument("--checks", help="Explicit next-round assertions; omitted inherits the parent's checks")
+    follow.add_argument("--profile", default="", help="Defaults to the parent's inference profile")
     diff = sub.add_parser("diff")
     diff.add_argument("experiment"); diff.add_argument("--base", default="baseline")
     diff.add_argument("--candidate", default="baseline"); diff.add_argument("--scenario", default="original")
@@ -200,6 +207,13 @@ def main(argv=None):
             previous_runs = len(workbench.get(args.experiment)["runs"])
             result = workbench.run(args.experiment, candidates=args.candidates, scenarios=args.scenarios or ["original"], repeats=args.repeats, profile=args.profile)
             produced = result["runs"][previous_runs:]
+            if any(run["status"] in ("error", "failed") for run in produced): exit_code = 4
+            elif any(run.get("passed") is False for run in produced): exit_code = 3
+        elif cmd == "continue":
+            result = workbench.continue_run(args.experiment, parent_run=args.parent_run,
+                tool_results=read_json(args.tool_results), context_patch=read_json(args.context_patch),
+                rationale=args.rationale, checks=read_json(args.checks) if args.checks else None, profile=args.profile)
+            produced = result["runs"][-1:]
             if any(run["status"] in ("error", "failed") for run in produced): exit_code = 4
             elif any(run.get("passed") is False for run in produced): exit_code = 3
         elif cmd == "diff":

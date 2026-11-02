@@ -69,3 +69,28 @@ test('saved evidence is escaped in content and output-target attributes', () => 
   assert.match(html,/&lt;script&gt;/);
   assert.match(html,/data-check-tool="&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;"/);
 });
+
+test('continuation view preserves failed round, explicit provenance, branching and escaped context', () => {
+  const {ancestry, chainSummary, renderContinuation}=require('../src/ablation_workbench/web/run-results.js');
+  const parent={id:'parent',request:{instructions:'Original'},status:'completed',passed:false,response:{output:[{type:'function_call',name:'load_skill',call_id:'call_fixture'}]}};
+  const child={id:'child',request:{instructions:'Runtime <context>'},parent_run_id:'parent',root_run_id:'parent',status:'completed',passed:true,response:{output:[{type:'message'}]},
+    continuation:{rationale:'Runtime <script>not markup</script>',tool_results:[{call_id:'call_fixture',output:'<loaded>'}],context_patch:[{op:'add',path:'/instructions',value:'Runtime <context>'}]}};
+  const branch={...child,id:'branch',passed:false};
+  const runs=[parent,child,branch],before=JSON.stringify(runs);
+  assert.deepEqual(ancestry(child,runs).map(r=>r.id),['parent','child']);
+  assert.deepEqual(chainSummary(runs),{chains:2,passed:1,needsInspection:0});
+  const html=renderContinuation(child,runs);
+  assert.match(html,/第 2 轮/);assert.match(html,/本轮未通过/);assert.match(html,/本轮通过/);
+  assert.match(html,/不属于候选 prompt diff/);assert.match(html,/data-run-detail="parent"/);assert.match(html,/data-run-detail="branch"/);
+  assert.doesNotMatch(html,/<script>|<loaded>|<context>/);assert.match(html,/&lt;context&gt;/);
+  assert.equal(JSON.stringify(runs),before);
+  assert.match(renderChecks(parent),/先检查实际输出/);
+  assert.equal(chainSummary([parent]).needsInspection,1);
+});
+
+test('runtime context diff collapses unchanged instructions and retains exact edits',()=>{
+ const {contextChanges}=require('../src/ablation_workbench/web/run-results.js');
+ const parent={request:{instructions:'Persona\nOriginal rule\nTail'}};
+ const child={request:{instructions:'Persona\nLoaded rule\nTail'},continuation:{context_patch:[{op:'replace',path:'/instructions',value:'Persona\nLoaded rule\nTail'}]}};
+ assert.deepEqual(contextChanges(child,parent),[{field:'instructions',removed:['Original rule'],added:['Loaded rule']}]);
+});

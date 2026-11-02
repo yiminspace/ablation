@@ -217,6 +217,10 @@
     }
     let text='尚未运行，修改效果待验证。';
     if(runs.length)text=`当前比较的历史回放 ${runs.length} 次：${Object.entries(counts).filter(([,n])=>n).map(([label,n])=>`${n} ${label}`).join(' · ')}。${candidates.some(candidate=>!runs.some(r=>r.candidate===candidate))?'部分版本尚未回放。':''}`;
+    if(runs.some(r=>r.parent_run_id)){
+      const chains=globalThis.AblationRunResults.chainSummary(runs);
+      text+=` 每轮计数不等于完整结果；${chains.chains} 条回放路径，${chains.passed} 条末轮通过且无待处理工具调用，${chains.needsInspection} 条需检查工具调用。`;
+    }
     return `<div class="effect-summary"><span class="effect-dot" aria-hidden="true"></span><span>${esc(text)}</span>${state.artifact==='response'?'':'<button class="text-btn" data-artifact="response">查看输出</button>'}</div>`;
   }
   function runMetrics(run) {
@@ -240,7 +244,7 @@
       const reasons=new Map();
       failures.forEach(run=>{const reason=globalThis.AblationRunResults.failureSummary(run);if(!reasons.has(reason))reasons.set(reason,[]);reasons.get(reason).push(run);});
       const failureRows=[...reasons].map(([reason,failed])=>`<button class="batch-failure" data-run-detail="${esc(failed[0].id)}" data-run-initial-view="checks"><span>${esc(reason)}</span><span class="batch-failure-count">${failed.length} 次 · 查看原因</span></button>`).join('');
-      return `<article class="history-batch" data-batch-group="${esc(key)}" data-run-count="${items.length}"><button class="run-batch-open" data-run-detail="${esc(selected.id)}"${failures.length?' data-run-initial-view="checks"':''} aria-haspopup="dialog" aria-current="${items.some(run=>run.id===drawerRunId)?'true':'false'}"><span class="batch-number">第 ${index+1} 批</span><span class="batch-copy"><strong>${esc(scenes.join('、'))}</strong><span>${esc(names.join(' / '))}</span></span><span class="batch-meta"><span class="batch-status">${badges}</span><span>${items.length} 次回放 · ${esc(formatTime(items.at(-1).created_at))}</span></span><span class="run-open-label">查看回放</span></button>${failureRows}</article>`;
+      return `<article class="history-batch" data-batch-group="${esc(key)}" data-run-count="${items.length}"><button class="run-batch-open" data-run-detail="${esc(selected.id)}"${failures.length?' data-run-initial-view="checks"':''} aria-haspopup="dialog" aria-current="${items.some(run=>run.id===drawerRunId)?'true':'false'}"><span class="batch-number">第 ${index+1} 批${items.some(r=>r.parent_run_id)?' · 续接':''}</span><span class="batch-copy"><strong>${esc(scenes.join('、'))}</strong><span>${esc(names.join(' / '))}</span></span><span class="batch-meta"><span class="batch-status">${badges}</span><span>${items.length} 次回放 · ${esc(formatTime(items.at(-1).created_at))}</span></span><span class="run-open-label">查看回放</span></button>${failureRows}</article>`;
     }).reverse().join('');
     feed.dataset.signature=signature;
     feed.dataset.session=state.experiment.id;
@@ -417,7 +421,8 @@
     paintLineAnchor();
     const notes=(Array.isArray(diff.notes)?diff.notes:diff.notes?[diff.notes]:[]).filter(n=>!/^Scenario:/.test(objectMessage(n)));
     const promptDiff=['changes','prompt'].includes(state.artifact);
-    let status=promptDiff?'':effectSummary();
+    const hasContinuations=state.experiment.runs.some(run=>run.parent_run_id&&[state.base,state.candidate].includes(run.candidate)&&run.scenario===state.scenario);
+    let status=promptDiff&&!hasContinuations?'':effectSummary();
     if(state.artifact==='input'||state.artifact==='checks') {
       const scenario=currentScenario();
       status=`<div class="effect-summary"><span class="vg-state badge neu ${scenario?.origin==='synthetic'?'synthetic':''}">${scenario?.origin==='synthetic'?'人工构造':'导入原场景'}</span><span>${esc(scenario?.label || state.scenario)}</span>${rows.length&&rows.every(row=>row.same)?'<span class="muted">与原始内容一致</span>':''}</div>`;
@@ -644,10 +649,10 @@
     state.whatsNew=false;updateIndicator();
   }
   function switchRunView(view) {
-    if(!['messages','checks','raw'].includes(view))return;
+    if(!['messages','checks','continuation','raw'].includes(view))return;
     saveDrawerPosition();
     drawerView=view;
-    for(const name of ['messages','checks','raw']) {
+    for(const name of ['messages','checks','continuation','raw']) {
       $(`#run-drawer-${name}`).hidden=name!==view;
       $(`#run-drawer-surface .run-drawer-tabs [data-run-view="${name}"]`).setAttribute('aria-selected',String(name===view));
     }
@@ -727,7 +732,7 @@
     const batch=state.experiment.runs.filter(item=>(item.batch_id || item.id)===batchKey);
     const batchNumber=[...new Set(state.experiment.runs.map(item=>item.batch_id || item.id))].indexOf(batchKey)+1;
     renderRunStack(batch,run);
-    $('#run-drawer-title').textContent=name;$('#run-drawer-title').title=name;
+    $('#run-drawer-title').textContent=name+(run.parent_run_id?' · 续接':'');$('#run-drawer-title').title=name;
     $('#run-drawer-context').textContent=`第 ${batchNumber} 批 · 回放 ${batch.indexOf(run)+1}/${batch.length} · ${label(state.experiment.scenarios,run.scenario)} · 第 ${run.repeat ?? 1} 次 · ${run.id}`;
     $('#run-drawer-context').title=$('#run-drawer-context').textContent;
     $('#run-drawer-meta').innerHTML=`${runBadge(run)}${runMetrics(run).map(value=>`<span>${esc(value)}</span>`).join('')}<time>${esc(formatTime(run.created_at))}</time><div class="run-log-links">${evidenceLinks(run)}</div>${run.error?`<span class="danger-text">${esc(objectMessage(run.error))}</span>`:''}`;
@@ -735,7 +740,14 @@
     failure.hidden=!reason;
     failure.innerHTML=reason?`<button class="run-failure-summary" data-run-view="checks"><span>${esc(reason)}</span><span>查看原因</span></button>`:'';
     $('#run-check-count').textContent=(run.checks || []).length;
-    const signature=JSON.stringify([run.id,run.status,run.completed_at,run.recorded_revision,run.checks,run.error,run.external_evidence]);
+    const rootId=globalThis.AblationRunResults.ancestry(run,state.experiment.runs)[0].id;
+    const continuationCount=state.experiment.runs.filter(item=>(item.root_run_id || item.id)===rootId&&item.parent_run_id).length;
+    const continuationBadge=$('#run-continuation-count'),continuationTab=$('.run-drawer-tabs [data-run-view="continuation"]');
+    continuationBadge.hidden=continuationCount===0;
+    continuationBadge.textContent=continuationCount || '';
+    continuationTab.title=continuationCount?`本条回放链包含 ${continuationCount} 次续接`:'本条回放尚无续接';
+    continuationTab.setAttribute('aria-label',continuationCount?`续接记录，${continuationCount} 次续接`:'续接记录');
+    const signature=JSON.stringify([run.id,run.parent_run_id,run.status,run.completed_at,run.recorded_revision,run.checks,run.error,run.external_evidence]);
     const host=$('#run-drawer-messages');
     if(drawerView==='messages' && host.dataset.signature!==signature) {
       globalThis.AblationMessages.clear();host.replaceChildren();
@@ -746,6 +758,9 @@
     if(drawerView==='checks' && $('#run-drawer-checks').dataset.signature!==signature) {
       $('#run-drawer-checks').innerHTML=`${globalThis.AblationRunResults.renderChecks(run)}<h3>外部证据</h3>${evidenceLinks(run) || '<p class="small muted">未关联外部日志。</p>'}`;
       $('#run-drawer-checks').dataset.signature=signature;
+    }
+    if(drawerView==='continuation') {
+      $('#run-drawer-continuation').innerHTML=globalThis.AblationRunResults.renderContinuation(run,state.experiment.runs);
     }
     if(drawerView==='raw' && $('#run-drawer-raw').dataset.signature!==signature) {
       $('#run-drawer-raw').innerHTML=`<pre class="run-raw-json">${esc(json(run))}</pre>`;
@@ -772,7 +787,7 @@
     drawerRunId=runId;
     if(!$('#run-drawer').open)$('#run-drawer').showModal();
     drawerView=view || drawerMemory.get(drawerMemoryKey())?.view || 'messages';
-    for(const name of ['messages','checks','raw']) {
+    for(const name of ['messages','checks','continuation','raw']) {
       $(`#run-drawer-${name}`).hidden=name!==drawerView;
       $(`#run-drawer-surface .run-drawer-tabs [data-run-view="${name}"]`).setAttribute('aria-selected',String(name===drawerView));
     }

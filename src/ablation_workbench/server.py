@@ -80,15 +80,20 @@ class ReplayJobs:
 
     def start(self, experiment_id, options):
         self.workbench.get(experiment_id)
-        allowed = {"candidates", "scenarios", "repeats", "profile"}
-        if set(options) - allowed: raise ValueError("Unsupported run option")
-        if not options.get("candidates") or not options.get("scenarios") or not options.get("profile"):
-            raise ValueError("Select candidates, scenarios and an inference profile")
-        repeats = options.get("repeats", 1)
-        if not isinstance(repeats, int) or isinstance(repeats, bool) or not 1 <= repeats <= 10:
-            raise ValueError("repeats must be 1–10")
-        if len(options["candidates"]) * len(options["scenarios"]) * repeats > 30:
-            raise ValueError("A batch may contain at most 30 requests")
+        if "parent_run" in options:
+            allowed = {"parent_run", "tool_results", "context_patch", "rationale", "checks", "profile"}
+            if set(options) - allowed or not all(k in options for k in ("parent_run", "tool_results", "context_patch", "rationale")):
+                raise ValueError("Continuation requires a parent, results, context patch and rationale")
+        else:
+            allowed = {"candidates", "scenarios", "repeats", "profile"}
+            if set(options) - allowed: raise ValueError("Unsupported run option")
+            if not options.get("candidates") or not options.get("scenarios") or not options.get("profile"):
+                raise ValueError("Select candidates, scenarios and an inference profile")
+            repeats = options.get("repeats", 1)
+            if not isinstance(repeats, int) or isinstance(repeats, bool) or not 1 <= repeats <= 10:
+                raise ValueError("repeats must be 1–10")
+            if len(options["candidates"]) * len(options["scenarios"]) * repeats > 30:
+                raise ValueError("A batch may contain at most 30 requests")
         job = {"id": "replay_" + uuid.uuid4().hex[:16], "kind": "replay", "experiment_id": experiment_id,
                "status": "queued", "created_at": now(), "pid": os.getpid(), "options": options}
         lease = installation_activity()
@@ -113,7 +118,8 @@ class ReplayJobs:
         try:
             job.update(status="running", started_at=now()); self.save(job)
             previous_ids = {run["id"] for run in self.workbench.get(job["experiment_id"])["runs"]}
-            result = self.workbench.run(job["experiment_id"], cancel_event=event, **job["options"])
+            replay = self.workbench.continue_run if "parent_run" in job["options"] else self.workbench.run
+            result = replay(job["experiment_id"], cancel_event=event, **job["options"])
             runs = [run for run in result["runs"] if run["id"] not in previous_ids]
             errors = [run for run in runs if run["status"] in {"error", "interrupted"}]
             job.update(status="cancelled" if event.is_set() else "failed" if errors else "completed",
@@ -295,6 +301,9 @@ def make_server(workbench, port=0):
                     elif action == "scenarios": result = workbench.add_scenario(eid, **body)
                     elif action == "reviews": result = workbench.submit_review(eid, body)
                     elif action == "run": result = jobs.start(eid, body)
+                    elif action == "continue":
+                        if "parent_run" not in body: raise ValueError("Select a parent run")
+                        result = jobs.start(eid, body)
                     elif match := re.fullmatch(r"reviews/([A-Za-z0-9_-]+)/(replies|dispatch)", action):
                         rid, verb = match.groups()
                         if verb == "dispatch":

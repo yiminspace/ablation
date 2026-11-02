@@ -105,6 +105,16 @@ The sidebar starts collapsed and lists saved experiment sessions by title and fu
 
 Replay invokes a single model request. Returned tool calls are inspected as data and never executed. A model response does not prove that an external action occurred.
 
+Replay runs remain single model requests. After investigating a failed assertion, an agent can explicitly continue a saved tool call without changing the candidate diff:
+
+```sh
+ablation continue EXPERIMENT_ID PARENT_RUN_ID \
+  --tool-results results.json --context-patch loaded-context.json \
+  --rationale 'The model requested a skill; context and result came from its runtime loader.'
+```
+
+`results.json` is a list of `{"call_id":"...","output":"..."}` pairs matching every returned tool call. `loaded-context.json` is a JSON Patch limited to `/instructions` and `/tools`, describing the real runtime load. Recorded model output and tool results are appended to history automatically; request parameters and inference profile stay fixed. No tools are executed. Checks default to the parent round's definitions; `--checks` explicitly supplies different stage checks. Each round retains its score, even if a later round passes. CLI exit 3 still means that round's assertions failed: inspect whether this is a behavioral miss, an unfinished turn, a validation mistake or an execution issue before changing the prompt. The GUI's **续接记录** tab links rounds, rationale, tool results and loaded context, separately from candidate diffs. Runtime context is not a proposed production prompt change.
+
 ## Optional external log tracking
 
 Replay profiles may configure independent observers through `config profile NAME --observers-json observers.json`. The file is an array, so a request passing through a proxy and a model gateway can retain both records. No tracking headers or external lookups are enabled by default.

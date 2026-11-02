@@ -84,3 +84,5 @@ GUI 随工具打包，不需要安装 Node。`skills/ablation` 可以手工安�
 日志延迟入库时，可为 `lookup` 配置 `attempts`（1–5，默认 1）和 `interval_seconds`（0–5，默认 1）。仅未命中精确记录时重试；多条匹配或请求失败立即停止，每次查询仍有 5 秒超时。最终无法关联会明确记录失败，不改变模型回放结果。
 
 `available` 表示从配置的响应或唯一匹配的日志记录取得 ID 或链接；`linked` 只是生成查看入口，未确认日志存在；`unavailable` 表示关联失败。关联失败不改变模型请求结果或断言评分。旧实验无需迁移，历史记录不追补或改写。
+
+回放仍以单次模型请求为单位。Agent 检查断言失败原因后，可通过 `ablation continue EXPERIMENT_ID PARENT_RUN_ID --tool-results results.json --context-patch loaded-context.json --rationale '续接原因及上下文来源'` 显式续接工具调用。`results.json` 是与实际调用匹配的 `call_id` / `output` 列表；上下文 JSON Patch 仅允许修改 `/instructions` 和 `/tools`。工具自动关联实际模型输出、历史和回执，不执行业务动作，不修改候选 diff。默认继承父轮断言，阶段检查不同需显式传 `--checks`。原轮失败永久保留，后续通过不会将其改绿。GUI 的“续接记录”单独展示轮次、原因、工具回执和加载上下文。先动态诊断并走通完整路径，再固定条件做重复对照，不能为满足轮次而添加额外生产 prompt。

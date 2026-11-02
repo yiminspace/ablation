@@ -286,7 +286,20 @@ class Workbench:
         with installation_activity():
             return self._run(experiment_id, candidates=candidates, scenarios=scenarios, repeats=repeats, profile=profile, cancel_event=cancel_event)
 
-    def _run(self, experiment_id: str, *, candidates: list[str], scenarios: list[str], repeats: int = 1, profile: str = "", cancel_event=None) -> dict:
+    def continue_run(self, experiment_id: str, *, parent_run: str, tool_results: list, context_patch: list,
+                     rationale: str, checks: list | None = None, profile: str = "", cancel_event=None) -> dict:
+        writable_intent()
+        parent = find_item(self.get(experiment_id)["runs"], parent_run, "run")
+        record = {"tool_results": tool_results, "context_patch": context_patch, "rationale": rationale,
+                  "checks": validate_checks(checks) if checks is not None else parent.get("check_definitions", [
+                      {k: v for k, v in c.items() if k not in {"actual", "passed", "error", "errors"}} for c in parent["checks"]])}
+        from .installation import installation_activity
+        with installation_activity():
+            return self._run(experiment_id, candidates=[parent["candidate"]], scenarios=[parent["scenario"]],
+                             profile=profile or parent.get("profile", ""), cancel_event=cancel_event,
+                             continuation={"parent_run_id": parent_run, "context": record})
+
+    def _run(self, experiment_id: str, *, candidates: list[str], scenarios: list[str], repeats: int = 1, profile: str = "", cancel_event=None, continuation: dict | None = None) -> dict:
         writable_intent()
         if not isinstance(candidates, list) or not candidates or not all(isinstance(value, str) for value in candidates):
             raise ValueError("Select at least one candidate")
@@ -311,8 +324,21 @@ class Workbench:
                     scene = find_item(experiment["scenarios"], scenario, "scenario")
                     for candidate in candidates:
                         request = request_for(experiment, candidate, scenario)
+                        if continuation:
+                            from .continuation import prepare_continuation
+                            parent = find_item(experiment["runs"], continuation["parent_run_id"], "run")
+                            if parent.get("profile") != profile_name:
+                                raise ValueError("Continuation must use the parent's inference profile")
+                            context = continuation["context"]
+                            validate_patch_credentials(parent["request"], context["context_patch"], secrets)
+                            request = prepare_continuation(parent, context)
+                            if redact({"request": request, "context": context}, secrets) != {"request": request, "context": context}:
+                                raise ValueError("Continuation contains credentials; redact tool evidence before replay")
+                            scene = {**scene, "checks": context["checks"]}
                         kind = validate_request(request)
                         target = endpoint_for(settings, kind)
+                        if continuation and parent.get("target") != target:
+                            raise ValueError("Continuation target differs from its parent")
                         plans.append((candidate, scene, repeat, request, kind, target))
             from .observation import tracking_headers
             tracking_headers(settings.get("observers", []), {"experiment_id": experiment_id, "batch_id": "validation", "run_id": "validation"})
@@ -321,6 +347,10 @@ class Workbench:
                 if cancel_event is not None and cancel_event.is_set():
                     break
                 run = {"id": new_id("run"), "batch_id": batch_id, "candidate": candidate, "scenario": scene["id"], "repeat": repeat, "status": "running", "request": request, "response": None, "request_hash": digest(request), "checks": [], "passed": None, "created_at": timestamp(), "elapsed_ms": 0, "profile": profile_name, "target": target, "software_version": __version__, "owner_pid": os.getpid()}
+                run["check_definitions"] = copy.deepcopy(scene["checks"])
+                if continuation:
+                    run.update(parent_run_id=parent["id"], root_run_id=parent.get("root_run_id", parent["id"]),
+                               continuation=copy.deepcopy(continuation["context"]))
                 tracking = {"experiment_id": experiment_id, "batch_id": batch_id, "run_id": run["id"]}
                 started = int(datetime.fromisoformat(run["created_at"]).timestamp())
                 tracking.update(start_time=started - 60, end_time=started + 600)
@@ -636,6 +666,7 @@ class Workbench:
             require(redact(request) == request, "scenario introduces sensitive request fields")
             validate_patch_credentials(baseline["request"], scene["patch"], [])
             validate_checks(scene["checks"])
+        seen_runs = {}
         for run in experiment["runs"]:
             from .observation import evidence_url, validate_observers
             if "observers" in run:
@@ -660,7 +691,23 @@ class Workbench:
             require(run.get("status") in {"queued", "running", "cancelling", "cancelled", "canceled", "completed", "error", "failed", "interrupted"}, "unknown run status")
             validate_request(run.get("request"))
             require(digest(run["request"]) == run.get("request_hash"), "run request hash does not match")
-            require(run["request"] == request_for(experiment, run["candidate"], run["scenario"]), "run request does not match its immutable candidate and scenario")
+            if "parent_run_id" in run:
+                from .continuation import prepare_continuation
+                parent = seen_runs.get(run["parent_run_id"])
+                require(parent is not None, "continuation parent must precede its child")
+                require((run["candidate"], run["scenario"]) == (parent["candidate"], parent["scenario"]), "continuation attribution differs from parent")
+                require(run.get("root_run_id") == parent.get("root_run_id", parent["id"]), "continuation root differs from parent")
+                require(run.get("profile") == parent.get("profile") and run.get("target") == parent.get("target"), "continuation target differs from parent")
+                require(run["request"] == prepare_continuation(parent, run.get("continuation")), "continuation request does not match its preserved context")
+                require(run.get("check_definitions") == run["continuation"]["checks"], "continuation checks differ from context")
+            else:
+                require("root_run_id" not in run and "continuation" not in run, "orphan continuation metadata")
+                require(run["request"] == request_for(experiment, run["candidate"], run["scenario"]), "run request does not match its immutable candidate and scenario")
+            if "check_definitions" in run:
+                validate_checks(run["check_definitions"])
+                if run["status"] == "completed":
+                    require(run["checks"] == evaluate_checks(run["response"], run["check_definitions"]), "checks differ from saved evaluation definition")
+            seen_runs[run["id"]] = run
             require("response" in run and isinstance(run.get("checks"), list), "run response or checks are missing")
             require(run.get("passed") is None or isinstance(run.get("passed"), bool), "run passed must be boolean or null")
             validate_checks(run["checks"])

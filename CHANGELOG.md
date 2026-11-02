@@ -12,6 +12,12 @@
 
 ## Unreleased
 
+- Add explicit, evidence-linked tool continuation through CLI and HTTP without changing candidate diffs. Preserve each round's assertions, context provenance and log association.
+- Mark the continuation tab with its linked continuation count, and show continuation paths and runtime context separately in the GUI, and guide agents to diagnose failed assertions before editing prompts or repeating experiments.
+
+
+## Unreleased
+
 ### Features
 
 - Diff 行号支持 URL 定位、Shift 多行选择与复制行链接，固定候选版本并在重新打开时高亮定位。
