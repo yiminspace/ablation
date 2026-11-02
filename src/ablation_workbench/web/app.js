@@ -646,23 +646,20 @@
     if(key!==drawerBatchKey){
       drawerBatchKey=key;stack.replaceChildren();$(':scope > .run-drawer-spine',$('#run-drawer-panel'))?.remove();
     }
-    const width=$('#run-drawer').clientWidth,n=batch.length,preferredEdge=width>=1000?(n<=6?36:28):(n<=6?28:20);
-    const minimumPanel=width>=1000?560:width>=480?360:220;
-    const edge=Math.max(0,Math.min(preferredEdge,Math.max(14,(width-minimumPanel)/n),(width-Math.min(160,width))/n));
-    const panelWidth=Math.min(1040,width-n*edge);
+    const width=$('#run-drawer').clientWidth;
+    const navigationWidth=width>=760?Math.min(360,Math.max(180,batch.length*40+24)):64;
+    const panelWidth=Math.min(1040,width-navigationWidth);
     $('#run-drawer').style.setProperty('--run-panel-width',`${panelWidth}px`);
-    $('#run-drawer').style.setProperty('--run-bookmark-step',`${edge}px`);
-    $('#run-drawer').style.setProperty('--run-index-size',edge<18?'10px':'11px');
     const statusText=item=>activeStatus(item.status)?'运行中':item.error?'执行错误':item.passed===false?'未通过':item.passed===true?'通过':'未评分';
     for(const [index,item] of batch.entries()){
       const name=item.candidate==='baseline'?'原提示词':label(state.experiment.candidates,item.candidate),context=`${name} · ${label(state.experiment.scenarios,item.scenario)} · 第 ${item.repeat ?? 1} 次 · ${statusText(item)}`;
       let sheet=$$('[data-stack-run]',stack).find(element=>element.dataset.stackRun===item.id);
       if(!sheet){sheet=document.createElement('section');sheet.className='run-drawer-sheet';sheet.dataset.stackRun=item.id;sheet.setAttribute('role','presentation');stack.append(sheet);}
-      const selected=item.id===run.id,depth=batch.length-index;
+      const selected=item.id===run.id;
       let button=liveBookmarks().find(button=>button.dataset.runDetail===item.id);
       if(!button){button=document.createElement('button');button.className='run-drawer-spine';button.dataset.runDetail=item.id;button.innerHTML=`<span class="spine-number">${index+1}</span><span class="spine-status-dot" aria-hidden="true"></span>`;}
       if(button.parentElement!==sheet)sheet.prepend(button);
-      sheet.dataset.visible='true';sheet.style.zIndex=batch.length-depth+1;sheet.style.setProperty('--bookmark-depth',depth);
+      sheet.dataset.visible='true';
       button.id=`run-drawer-bookmark-${item.id}`;button.dataset.bookmarkIndex=index;button.disabled=false;button.title=context;button.setAttribute('aria-label',`回放 ${index+1}：${context}`);button.removeAttribute('role');button.removeAttribute('aria-selected');button.setAttribute('aria-current',selected?'page':'false');button.setAttribute('aria-pressed',String(selected));button.tabIndex=selected?0:-1;
       if(selected)$('#run-drawer-surface').setAttribute('aria-labelledby',button.id);
       $('.spine-status-dot',button).className=`spine-status-dot ${item.passed===false||item.error?'error':item.passed===true?'success':'warning'}`;
@@ -709,9 +706,14 @@
       $('#run-drawer-raw').dataset.signature=signature;
     }
   }
-  function runDetails(runId,view) {
+  function runDetails(runId,view,{focus=true}={}) {
     if(!state.experiment?.runs.some(run=>run.id===runId))return;
     const changed=drawerRunId!==runId,opening=!$('#run-drawer').open,pickerWasOpen=!$('#run-drawer-picker').hidden;
+    if(!changed&&!opening&&!view){
+      setRunPicker(false);
+      if(focus)(pickerWasOpen?$('#run-drawer-all'):liveBookmarks().find(button=>button.dataset.runDetail===runId))?.focus({preventScroll:true});
+      return;
+    }
     stopDrawerMotion();
     saveDrawerPosition();
     setRunPicker(false);
@@ -730,7 +732,7 @@
     }
     renderRunDrawer();restoreDrawerPosition();
     if(opening)animateRunDrawer();
-    if(!opening)(pickerWasOpen?$('#run-drawer-all'):liveBookmarks().find(button=>button.dataset.runDetail===runId))?.focus({preventScroll:true});
+    if(!opening&&focus)(pickerWasOpen?$('#run-drawer-all'):liveBookmarks().find(button=>button.dataset.runDetail===runId))?.focus({preventScroll:true});
     const run=state.experiment.runs.find(item=>item.id===runId);
     $$('.run-batch-open').forEach(button=>button.setAttribute('aria-current',String(button.closest('[data-batch-group]').dataset.batchGroup===(run.batch_id || run.id))));
   }
@@ -885,6 +887,22 @@
     if(!$('#run-drawer-picker').hidden){event.preventDefault();setRunPicker(false,true);return;}
     saveDrawerPosition();
   });
+  $('#run-drawer-stack').addEventListener('pointerover',event=>{
+    if(event.pointerType==='touch' || !$('#run-drawer-picker').hidden)return;
+    const button=event.target.closest('.run-drawer-spine');
+    if(!button || button.contains(event.relatedTarget) || button.dataset.runDetail===drawerRunId)return;
+    runDetails(button.dataset.runDetail,undefined,{focus:false});
+  });
+  $('#run-drawer-stack').addEventListener('wheel',event=>{
+    if(event.ctrlKey || !event.deltaY)return;
+    const area=drawerView==='messages'?$('#run-drawer-messages .bf-message-scroll'):$(`#run-drawer-${drawerView}`);
+    if(!area)return;
+    event.preventDefault();
+    // Notify the Messages view to stop following output while the user reads.
+    area.dispatchEvent(new WheelEvent('wheel',{deltaY:event.deltaY,bubbles:true}));
+    const unit=event.deltaMode===1?16:event.deltaMode===2?area.clientHeight:1;
+    area.scrollBy({top:event.deltaY*unit,behavior:'instant'});
+  },{passive:false});
   $('#run-drawer').addEventListener('click',event=>{
     if(event.target!==$('#run-drawer'))return;
     closeRunDrawer();

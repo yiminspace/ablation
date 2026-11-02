@@ -81,9 +81,11 @@ async function assertPhysicalBookmarks(page,count){
   assert(Math.abs(geometry.clip.left-geometry.panel.left)<2&&geometry.clip.width>=geometry.panel.width-2&&Math.abs(geometry.clip.top)<2&&geometry.clip.bottom<=geometry.viewport.height+1,'Clipped body fills the entire live page without a rail gutter');
   assert(['hidden','clip'].includes(geometry.clip.overflow),'Page viewport clips content during physical expansion');
   assert(geometry.bookmarks.every(item=>item.owner===item.id&&item.role!=='tab'),'Each ordinary button belongs to its corresponding page');
-  assert(geometry.bookmarks.every(item=>Math.abs(item.frame.left-geometry.panel.left)<2&&Math.abs(item.frame.top)<1&&Math.abs(item.frame.width-geometry.panel.width)<2&&item.frame.height>=geometry.viewport.height-1),'Background pages share the live page rectangle; there are no detached full-height peer rails');
-  assert(geometry.bookmarks.every(item=>item.label.height>=100&&item.label.height<=140&&item.label.top>=0&&item.label.bottom<=Math.min(geometry.viewport.height,132+(count-1)*3)&&item.label.right<=geometry.panel.left+2&&item.horizontal&&item.status&&item.reachable&&item.number.left>=-1&&item.number.right<=geometry.viewport.width+1),'Every attached bookmark/status protrudes only in the top-left and remains directly clickable');
-  assert(geometry.bookmarks.every(item=>item.neck.content!=='none'&&item.neck.width>=geometry.panel.left-item.label.right-2),'Bookmark necks connect each index sticker to its page');
+  assert(geometry.bookmarks.every(item=>item.label.height===48&&item.label.top>=0&&item.label.bottom<=geometry.viewport.height&&item.label.right<=geometry.panel.left&&item.horizontal&&item.status&&item.reachable&&item.number.left>=0),'Flat replay controls remain readable and directly reachable beside the detail panel');
+  assert(geometry.bookmarks.every(item=>item.neck.content==='none'),'Replay controls have no overlapping page connectors');
+  for(const item of geometry.bookmarks){
+    assert(!geometry.bookmarks.some(other=>other.id!==item.id&&other.label.left<item.label.right&&other.label.right>item.label.left&&other.label.top<item.label.bottom&&other.label.bottom>item.label.top),'Replay controls never overlap');
+  }
   return geometry;
 }
 async function sampleMotion(page,selector){
@@ -224,6 +226,27 @@ async function main(){
   });
   assert.deepEqual(hover,{opacity:1,alpha:255},'Hover background stays fully opaque');
   assert.equal(await page.locator('#run-drawer-panel').getAttribute('data-run-id'),edgeRun);
+  const hoverTarget=page.locator(`${edgeSelector}[data-run-detail="run_fixture_2"]`);
+  await page.locator('[data-action="close-run-drawer"]').focus();
+  await hoverTarget.hover();
+  assert.equal(await page.locator('#run-drawer-panel').getAttribute('data-run-id'),'run_fixture_2','Hover switches details without clicking');
+  assert.equal(await page.evaluate(()=>document.activeElement.dataset.action),'close-run-drawer','Hover preserves keyboard focus');
+  await page.locator('.run-drawer-tabs [data-run-view="messages"]').click();
+  await hoverTarget.hover();
+  const hoverScroll=page.locator('.bf-message-scroll');
+  await hoverScroll.evaluate(node=>node.scrollTop=500);
+  const backgroundScroll=await page.evaluate(()=>document.scrollingElement.scrollTop);
+  await page.mouse.wheel(0,-180);
+  await until(async()=>await hoverScroll.evaluate(node=>node.scrollTop)<500);
+  const scrolledUp=await hoverScroll.evaluate(node=>node.scrollTop);
+  await page.mouse.wheel(0,120);
+  await until(async()=>await hoverScroll.evaluate(node=>node.scrollTop)>scrolledUp);
+  assert.equal(await page.evaluate(()=>document.scrollingElement.scrollTop),backgroundScroll,'Wheel over navigation leaves the background still');
+  await page.locator('.run-drawer-tabs [data-run-view="raw"]').click();
+  await hoverTarget.hover();
+  await page.locator('#run-drawer-raw').evaluate(node=>node.scrollTop=0);
+  await page.mouse.wheel(0,160);
+  await until(async()=>await page.locator('#run-drawer-raw').evaluate(node=>node.scrollTop)>0);
   const rapid=await page.evaluate(()=>{
     const next=()=>[...document.querySelectorAll('#run-drawer-stack .run-drawer-sheet[data-visible="true"] > .run-drawer-spine[data-run-detail]')].find(button=>getComputedStyle(button).visibility!=='hidden'&&button.getAttribute('aria-current')!=='page');
     next().click();const first=document.querySelectorAll('.run-drawer-outgoing').length;
