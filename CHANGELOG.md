@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.6.0 (2026-11-02)
+
+### Features
+
+- 支持显式回放续接与独立上下文记录 ([#17](https://github.com/yiminspace/ablation/pull/17),
+  [`25d5221`](https://github.com/yiminspace/ablation/commit/25d522176310dcdeadfc9cb964e822c43e6ed9b7))
+
+
 ## v0.5.0 (2026-11-02)
 
 ### Features
