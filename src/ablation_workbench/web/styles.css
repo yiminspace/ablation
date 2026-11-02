@@ -309,3 +309,9 @@
 }
 @media(pointer:coarse){.run-drawer-all,.run-picker-item,.run-drawer-actions [data-action=close-run-drawer]{min-height:44px}.run-drawer-actions [data-action=close-run-drawer]{min-width:44px}}
 @media(prefers-reduced-motion:reduce){#run-drawer-panel,.run-drawer-sheet,.run-drawer-outgoing{animation:none;transition:none}}
+
+/* Shareable diff line selections. */
+a.line-number{display:block;color:var(--muted);cursor:pointer;scroll-margin-block:100px}
+a.line-number:hover{color:var(--blue);text-decoration:underline;background:var(--blue-bg)}
+.diff-cell.line-selected{background:color-mix(in srgb,var(--warning) 20%,var(--bg));box-shadow:inset 3px 0 var(--warning)}
+.diff-cell.line-selected .line-number{color:var(--fg)}
