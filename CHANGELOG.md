@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.5.0 (2026-11-02)
+
+### Features
+
+- 支持可复制的 diff 行定位链接 ([#16](https://github.com/yiminspace/ablation/pull/16),
+  [`4c60e26`](https://github.com/yiminspace/ablation/commit/4c60e26f98c2982a26d888aff23f75b0c625be63))
+
+
 ## Unreleased
 
 ### Features
