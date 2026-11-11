@@ -8,7 +8,7 @@ The CLI and browser GUI share one experiment store. The optional Agent skill use
 
 ## Install
 
-Supports macOS and Linux with Python 3.11 or later. The GUI is included; end users do not need Node.js. Versioned releases are distributed through PyPI and [GitHub Releases](https://github.com/yiminspace/ablation/releases). The first PyPI publication requires the repository trusted publisher described in the release checklist.
+Supports macOS and Linux with Python 3.11 or later. The GUI is included; end users do not need Node.js. Versioned releases are distributed through [PyPI](https://pypi.org/project/ablation-workbench/) and [GitHub Releases](https://github.com/yiminspace/ablation/releases).
 
 ```sh
 pipx install ablation-workbench
@@ -16,7 +16,7 @@ ablation --version
 ablation demo --open
 ```
 
-Alternatively, `uv tool install ablation-workbench`, or download the wheel from GitHub Releases and run `uv tool install /path/to/ablation_workbench-0.1.0-py3-none-any.whl`. For development use `python -m venv .venv` followed by `.venv/bin/python -m pip install -e .`.
+Alternatively, `uv tool install ablation-workbench`, or download the wheel from GitHub Releases and run `uv tool install /path/to/ablation_workbench-*.whl`. For development use `python -m venv .venv` followed by `.venv/bin/python -m pip install -e .`.
 
 The demo uses synthetic inputs and makes no model requests. Its initial output panel is explicitly untested. It includes an over-specific candidate and a more general candidate to demonstrate comparisons without presenting fabricated performance claims.
 
