@@ -35,6 +35,7 @@ def configured_secrets(config: dict) -> list[str]:
             for item in value:
                 visit(item)
     visit(config.get("profiles", {}))
+    visit(config.get("llm", {}))
     return sorted(set(values), key=len, reverse=True)
 
 

@@ -187,7 +187,48 @@ def endpoint_for(profile: dict, kind: str) -> str:
     return base + suffix if base.endswith("/v1") else base + "/v1" + suffix
 
 
-def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] | None = None) -> dict:
+def safe_stream_text(text: str, secrets: list[str]) -> str:
+    safe = redact(text, secrets)
+    withheld = max((size for secret in secrets for size in range(1, min(len(secret), len(safe) + 1))
+                    if safe.endswith(secret[:size])), default=0)
+    return safe[:-withheld] if withheld else safe
+
+
+def streamed_body(response, kind: str, on_text, secrets: list[str]) -> bytes:
+    body = bytearray()
+    block = []
+    output = ""
+    while line := response.readline(MAX_BYTES + 1):
+        body.extend(line)
+        if len(body) > MAX_BYTES:
+            raise ValueError("Model response exceeds 32 MiB")
+        if line.strip():
+            block.append(line.decode("utf-8"))
+            continue
+        payload = "\n".join(line[5:].lstrip(" ").rstrip("\r\n") for line in block if line.startswith("data:"))
+        block = []
+        if not payload or payload == "[DONE]":
+            continue
+        event = json.loads(payload)
+        if not isinstance(event, dict):
+            raise ValueError("Invalid model SSE event")
+        if event.get("error") or event.get("type") in {"error", "response.failed"}:
+            raise ValueError("Model stream reported an error")
+        if kind == "responses":
+            delta = event.get("delta", "") if event.get("type") == "response.output_text.delta" else ""
+        else:
+            delta = "".join((choice.get("delta") or {}).get("content", "") or ""
+                            for choice in event.get("choices", []) if choice.get("index", 0) == 0)
+        if not isinstance(delta, str):
+            raise ValueError("Invalid model text delta")
+        if delta:
+            output += delta
+            # A credential may straddle network chunks. Hold back a matching suffix.
+            on_text(safe_stream_text(output, secrets))
+    return bytes(body)
+
+
+def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] | None = None, *, on_text=None) -> dict:
     url = endpoint_for(profile, kind)
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     if profile.get("api_key_env"):
@@ -204,7 +245,8 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
         http_request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.build_opener(NoRedirect).open(http_request, timeout=timeout) as http_response:
             observed_headers = {name.lower(): value for name, value in http_response.headers.items()}
-            body = http_response.read(MAX_BYTES + 1)
+            streaming = on_text is not None and "text/event-stream" in http_response.headers.get("Content-Type", "")
+            body = streamed_body(http_response, kind, on_text, secrets or []) if streaming else http_response.read(MAX_BYTES + 1)
             if len(body) > MAX_BYTES:
                 raise ValueError("Model response exceeds 32 MiB")
             try:
@@ -222,7 +264,10 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
                 result["error"] = "Response did not contain expected model output"
             else:
                 result["status"] = "completed"
+                if on_text is not None:
+                    on_text(response.get("output_text") if isinstance(response.get("output_text"), str) else response_text(response))
     except urllib.error.HTTPError as error:
+        result["http_status"] = error.code
         observed_headers = {name.lower(): value for name, value in error.headers.items()}
         result["error"] = f"Model endpoint returned HTTP {error.code}"
         raw = error.read(65536)

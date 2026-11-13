@@ -21,6 +21,7 @@ from .demo import create_demo
 from .events import UpdateEvents
 from .installation import installation_activity
 from .runner import AgentRunner, workspace_lock
+from .translation import Translation
 
 ACTIVE = {"queued", "running", "cancelling"}
 MAX_BODY = 32 * 1024 * 1024
@@ -159,9 +160,16 @@ def public_config(workspace):
 
 def make_server(workbench, port=0):
     agent = AgentRunner(workbench)
+    translation = Translation(workbench)
     jobs = ReplayJobs(workbench)
     owned_agent_jobs = set()
     updates = UpdateEvents()
+    # Keep the browser bundle paired with the API code loaded by this process.
+    assets = {}
+    for name in ("index.html", "favicon.svg", "app.js", "translation.js", "styles.css", "theme.js", "voyage.css", "voyage-toolbar.js", "messages.js", "messages.css", "run-results.js", "bifrost-LICENSE.txt", "bifrost-NOTICE.txt"):
+        asset = WEB / name
+        assets["/" + name] = (asset.read_bytes(), (mimetypes.guess_type(asset)[0] or "text/plain") + "; charset=utf-8")
+    assets["/"] = assets["/index.html"]
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "Ablation"
@@ -229,6 +237,22 @@ def make_server(workbench, port=0):
             except OSError:
                 pass
 
+        def send_translation(self, experiment_id, options):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.close_connection = True
+            connected = True
+            for event in translation.events(experiment_id, **options):
+                if connected:
+                    try:
+                        self.wfile.write(("data: " + json.dumps(event, ensure_ascii=False) + "\n\n").encode())
+                        self.wfile.flush()
+                    except OSError:
+                        connected = False
+
         def do_GET(self):
             try:
                 if not self.valid_local(): self.error(ValueError("Local origin required"), 403); return
@@ -241,9 +265,9 @@ def make_server(workbench, port=0):
                 if path == "/api/events":
                     self.send_events()
                     return
-                if path in ("/", "/index.html", "/favicon.svg", "/app.js", "/styles.css", "/theme.js", "/voyage.css", "/voyage-toolbar.js", "/messages.js", "/messages.css", "/run-results.js", "/bifrost-LICENSE.txt", "/bifrost-NOTICE.txt"):
-                    asset = WEB / ("index.html" if path == "/" else path[1:])
-                    self.send_bytes(asset.read_bytes(), content_type=(mimetypes.guess_type(asset)[0] or "text/plain") + "; charset=utf-8")
+                if path in assets:
+                    content, content_type = assets[path]
+                    self.send_bytes(content, content_type=content_type)
                     return
                 query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
                 if path == "/api/experiments": result = {"experiments": workbench.list_experiments()}
@@ -261,6 +285,8 @@ def make_server(workbench, port=0):
                     if not action: result = workbench.get(eid)
                     elif action == "diff":
                         result = workbench.compare(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact", "format")})
+                    elif action == "translation":
+                        result = translation.get(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact", "format", "review")})
                     elif action == "export":
                         with tempfile.TemporaryDirectory() as directory:
                             target = Path(directory) / "experiment.json"
@@ -301,6 +327,10 @@ def make_server(workbench, port=0):
                     elif action == "scenarios": result = workbench.add_scenario(eid, **body)
                     elif action == "reviews": result = workbench.submit_review(eid, body)
                     elif action == "run": result = jobs.start(eid, body)
+                    elif action == "translation": result = translation.run(eid, **body)
+                    elif action == "translation/stream":
+                        self.send_translation(eid, body)
+                        return
                     elif action == "continue":
                         if "parent_run" not in body: raise ValueError("Select a parent run")
                         result = jobs.start(eid, body)

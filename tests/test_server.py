@@ -2,6 +2,7 @@ import json
 import os
 import errno
 import socket
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -96,6 +97,32 @@ class ServerTests(unittest.TestCase):
                 self.assertIn(content_type, response.headers["Content-Type"])
                 self.assertGreater(len(response.read()), 100)
                 self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
+
+    def test_running_service_keeps_browser_assets_paired_with_loaded_api(self):
+        from ablation_workbench.server import WEB
+        with tempfile.TemporaryDirectory() as directory:
+            web = Path(directory) / 'web'
+            shutil.copytree(WEB, web)
+            servers = []
+            try:
+                with patch('ablation_workbench.server.WEB', web):
+                    first = make_server(self.workbench)
+                    servers.append(first)
+                    threading.Thread(target=first.serve_forever, daemon=True).start()
+                    original = (web / 'app.js').read_bytes()
+                    (web / 'app.js').write_bytes(b'// changed browser code')
+                    for _ in range(2):
+                        with urlopen(f'http://127.0.0.1:{first.server_port}/ablation/app.js') as response:
+                            self.assertEqual(response.read(), original)
+                    second = make_server(self.workbench)
+                    servers.append(second)
+                    threading.Thread(target=second.serve_forever, daemon=True).start()
+                    with urlopen(f'http://127.0.0.1:{second.server_port}/ablation/app.js') as response:
+                        self.assertEqual(response.read(), b'// changed browser code')
+            finally:
+                for server in servers:
+                    close_jobs(server)
+                    server.shutdown(); server.server_close()
 
     def test_demo_diff_review_reply_survives_service_restart(self):
         status, exp = self.request("/api/demo", {})
