@@ -2,6 +2,34 @@
 
 <!-- version list -->
 
+## v0.7.0 (2026-11-13)
+
+### Bug Fixes
+
+- Preserve translation column alignment on narrow layouts
+  ([#20](https://github.com/yiminspace/ablation/pull/20),
+  [`6866cc7`](https://github.com/yiminspace/ablation/commit/6866cc7468b99855f8434c5876b652fc15859463))
+
+### Chores
+
+- **deps**: Upgrade Voyage to 0.19.0 ([#18](https://github.com/yiminspace/ablation/pull/18),
+  [`55da68c`](https://github.com/yiminspace/ablation/commit/55da68cc6f58b7d3e2fa0a2d3ea1d5e63b0d027a))
+
+### Documentation
+
+- Refresh release installation instructions
+  ([`d751e43`](https://github.com/yiminspace/ablation/commit/d751e43aa8eb891a13bb2ffe87aeb33fd2432aab))
+
+### Features
+
+- Add streaming Chinese translations to prompt diffs
+  ([#20](https://github.com/yiminspace/ablation/pull/20),
+  [`6866cc7`](https://github.com/yiminspace/ablation/commit/6866cc7468b99855f8434c5876b652fc15859463))
+
+- 为提示词改动增加流式中文翻译列 ([#20](https://github.com/yiminspace/ablation/pull/20),
+  [`6866cc7`](https://github.com/yiminspace/ablation/commit/6866cc7468b99855f8434c5876b652fc15859463))
+
+
 ## v0.6.0 (2026-11-02)
 
 ### Features
