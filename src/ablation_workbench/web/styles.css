@@ -329,3 +329,21 @@ a.line-number:hover{color:var(--blue);text-decoration:underline;background:var(-
 .continuation-removed{background:var(--del);padding:10px}
 
 .continuation-count{background:var(--blue-bg);color:var(--blue);font-weight:600}
+
+/* The translation is a third diff column. Each source row retains its own height. */
+.diff-file.with-translation .diff-headrow,.diff-file.with-translation .diff-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.diff-file.with-translation .diff-row>.diff-cell{display:grid}
+.diff-file.with-translation .diff-row>.diff-cell+.diff-cell{border-left:1px solid var(--border)}
+.diff-translation{min-width:0;border-left:1px solid var(--border);font:13px/1.75 var(--vg-font-ui);overflow-wrap:anywhere}
+.translation-before,.translation-after{display:grid;grid-template-columns:14px minmax(0,1fr);gap:5px;padding:4px 10px;white-space:pre-wrap}
+.translation-before{background:var(--del)}
+.translation-after{background:var(--add)}
+.translation-before>span:first-child,.translation-after>span:first-child{color:var(--muted);user-select:none}
+.translation-error{font-size:12px;color:var(--danger);max-width:380px;overflow-wrap:anywhere}
+.file-actions{flex-wrap:wrap}
+@media(max-width:760px){.diff-file.with-translation{overflow-x:auto}.diff-file.with-translation .diff-headrow,.diff-file.with-translation .diff-row{min-width:900px}}
+
+.translation-tools{display:contents}
+
+.translation-before .inline-change{background:var(--del-word)}
+.translation-after .inline-change{background:var(--add-word)}

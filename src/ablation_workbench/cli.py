@@ -73,6 +73,23 @@ def configure_profile(args, workspace):
     return {"profile": args.name, "config": str(config_path(workspace)), "settings": config["profiles"][args.name]}
 
 
+def configure_llm(args, workspace):
+    from .translation import llm_config
+    settings = {"base_url": args.base_url, "model": args.model, "api": args.api,
+                "timeout_seconds": args.timeout, "thinking": args.thinking, "bifrost": args.bifrost}
+    if args.credential_command_json:
+        settings.update(auth="command", credential_command=json.loads(args.credential_command_json))
+    elif args.no_auth:
+        settings["auth"] = "none"
+    else:
+        settings.update(auth="env", api_key_env=args.api_key_env or "ABLATION_LLM_API_KEY")
+    llm_config({"llm": settings})
+    config = read_config(workspace)
+    config["llm"] = settings
+    save_config(workspace, config)
+    return {"config": str(config_path(workspace)), "llm": settings}
+
+
 def parser():
     p = argparse.ArgumentParser(prog="ablation", description="Local prompt experiments, replay, diffs and review.")
     p.add_argument("--version", action="version", version=__version__)
@@ -136,6 +153,17 @@ def parser():
     bundle = sub.add_parser("import-bundle"); bundle.add_argument("path")
     config = sub.add_parser("config"); cs = config.add_subparsers(dest="config_action", required=True)
     cs.add_parser("show")
+    llm = cs.add_parser("llm", help="Configure the translation LLM source independently of replay")
+    llm.add_argument("--base-url", required=True, help="OpenAI-compatible API base, including its version path")
+    llm.add_argument("--model", required=True)
+    llm.add_argument("--api", choices=["chat", "responses"], default="chat")
+    credentials = llm.add_mutually_exclusive_group()
+    credentials.add_argument("--api-key-env", help="Credential environment variable (default: ABLATION_LLM_API_KEY)")
+    credentials.add_argument("--credential-command-json", help="Trusted local argv array printing a fresh credential")
+    credentials.add_argument("--no-auth", action="store_true")
+    llm.add_argument("--timeout", type=int, default=120)
+    llm.add_argument("--thinking", choices=["default", "disabled"], default="default")
+    llm.add_argument("--bifrost", action="store_true")
     profile = cs.add_parser("profile"); profile.add_argument("name")
     for flag in ("base-url", "source-base-url", "source-path", "source-request-pointer", "source-response-pointer", "api-key-env", "token-env", "source-user-env", "source-password-env"):
         profile.add_argument("--" + flag)
@@ -241,7 +269,10 @@ def main(argv=None):
                 emit(result); return 0 if result["status"] == "completed" else 4
         elif cmd == "export": result = {"path": str(workbench.export_bundle(args.experiment, args.out))}
         elif cmd == "import-bundle": result = workbench.import_bundle(args.path)
-        elif cmd == "config": result = read_config(args.workspace) if args.config_action == "show" else configure_profile(args, args.workspace)
+        elif cmd == "config":
+            if args.config_action == "show": result = read_config(args.workspace)
+            elif args.config_action == "llm": result = configure_llm(args, args.workspace)
+            else: result = configure_profile(args, args.workspace)
         elif cmd == "agent":
             from .runner import AgentRunner
             if args.agent_action == "configure":

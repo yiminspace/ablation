@@ -66,6 +66,17 @@ Omit `--source-response-pointer` when your export has no response. To map indivi
 
 Remote imports require an explicit `--source-base-url`. Supply a full JSON URL on the same origin, or a reference resolved by the configured `--source-path` template. `--ref` forces a positional value to be treated as a reference instead of a local file. Source authentication uses either `--token-env` or the pair `--source-user-env` / `--source-password-env`. It never falls back to the inference API key. A webpage sharing link is not necessarily a JSON endpoint; export its data with an existing tool, then import that JSON. Replay can independently use the `model` profile.
 
+### Translate prompt changes
+
+Click **翻译** in the diff toolbar to reveal a third column with Chinese translations of added and removed text. Changes are split into segments with up to three concurrent requests. The third column renders streamed text as it arrives, and each completed segment is saved immediately. Refresh restores completed segments and follows active work. Configure the translation model source locally:
+
+```sh
+ablation config llm --base-url https://model.example.invalid/v1 \
+  --model YOUR_MODEL --api-key-env MODEL_API_KEY
+```
+
+This writes the workspace's `llm` configuration. Use `--api chat|responses` to select the API family, `--thinking disabled` when needed, or `--credential-command-json '["/absolute/path/to/credential-helper", "argument"]'` to resolve a credential before each request. See `ablation config llm --help` for all options.
+
 ## Change, replay, compare
 
 Candidates are immutable JSON patches with a rationale. Keep the explanation concise: why the change helps, then where it belongs and what it affects. Add verified GitHub source links using Markdown; identify unconfirmed locations or origins explicitly. Scenarios independently describe changed inputs and their expected behavior. Every candidate is derived from the fixed source; prior model responses never become the next baseline automatically.
