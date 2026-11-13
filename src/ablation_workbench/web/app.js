@@ -41,6 +41,18 @@
     if (!response.ok) throw new Error(value.error?.message || value.error || `请求失败（HTTP ${response.status}）`);
     return value;
   }
+  const translation = window.AblationTranslation({api, onChange:updateTranslation});
+  function updateTranslation(event) {
+    if(!state.diff)return;
+    if(!event?.progress){renderDiff();return;}
+    for(const id of event.ids) {
+      const index=Number(id.replace('row_',''));
+      const cell=$(`#diff-file .diff-row[data-row-index="${index}"]>.diff-translation`);
+      if(cell)cell.outerHTML=translation.cellMarkup(index,false);
+    }
+    const toolbar=$('#diff-file .translation-tools');
+    if(toolbar)toolbar.outerHTML=translation.toolbar();
+  }
   const endpoint = suffix => `/api/experiments/${encodeURIComponent(state.experiment.id)}${suffix || ''}`;
   const formatTime = value => { if (!value) return ''; const d = new Date(value); return Number.isNaN(d.valueOf()) ? String(value) : d.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); };
   const label = (collection, value) => (collection || []).find(item => item.id === value)?.label || value;
@@ -263,9 +275,10 @@
     const seq=++state.diffSequence;
     const key=[state.experiment.id,state.base,state.candidate,state.scenario,state.artifact].join('|');
     $('#diff-file').setAttribute('aria-busy','true');
-    if(state.diffKey!==key) $('#diff-file').innerHTML='<div class="file-empty">正在读取比较…</div>';
+    if(state.diffKey!==key) { translation.sync(null); $('#diff-file').innerHTML='<div class="file-empty">正在读取比较…</div>'; }
     try {
       const query=new URLSearchParams({base:state.base,candidate:state.candidate,scenario:state.scenario,artifact:state.artifact});
+      let format='readable';
       let diff=await api(endpoint(`/diff?${query}`));
       const saved=state.snapshotReview&&state.experiment.reviews.find(review=>review.id===state.snapshotReview&&review.base===state.base&&review.candidate===state.candidate&&review.scenario===state.scenario);
       if(saved?.snapshot?.diffs?.[state.artifact])diff=saved.snapshot.diffs[state.artifact];
@@ -275,11 +288,15 @@
         if(anchors.some(anchor=>!diff.rows.some(row=>sameAnchor(anchor,{...row,artifact:state.artifact})))) {
           query.set('format','legacy');
           const legacy=await api(endpoint(`/diff?${query}`));
-          if(anchors.some(anchor=>legacy.rows.some(row=>sameAnchor(anchor,{...row,artifact:state.artifact}))))diff=legacy;
+          if(anchors.some(anchor=>legacy.rows.some(row=>sameAnchor(anchor,{...row,artifact:state.artifact})))){diff=legacy;format='legacy';}
         }
       }
       if(seq!==state.diffSequence) return;
       state.diff=diff;state.diffKey=key;
+      translation.sync(['changes','prompt'].includes(state.artifact) ? {
+        endpoint:endpoint('/translation'), selection:{base:state.base,candidate:state.candidate,scenario:state.scenario,artifact:state.artifact,format,...(saved?.snapshot?.diffs?.[state.artifact]?{review:saved.id}:{})},
+        diff,
+      } : null);
       renderDiff();
     } catch(error) { if(seq===state.diffSequence) $('#diff-file').innerHTML=`<div class="file-empty danger-text">${esc(error.message)} <button class="text-btn" data-action="retry-diff">重试</button></div>`; }
     finally { if(seq===state.diffSequence) $('#diff-file').setAttribute('aria-busy','false'); }
@@ -296,34 +313,13 @@
   function makeAnchor(row) { return {experiment:state.experiment.id,revision:state.experiment.revision,base:state.base,candidate:state.candidate,scenario:state.scenario,artifact:state.artifact,old_line:row.old_line,new_line:row.new_line,before:row.before,after:row.after}; }
   const sameAnchor = (a,b) => a.artifact===b.artifact && a.old_line===b.old_line && a.new_line===b.new_line && (a.before ?? '')===(b.before ?? '') && (a.after ?? '')===(b.after ?? '');
   const locationText = c => `${artifactLabels[c.artifact] || c.artifact} · ${c.new_line!=null?'改动后第 '+c.new_line+' 行':'改动前第 '+c.old_line+' 行'}`;
-  function inlineChanges(before, after) {
-    const tokens = text => String(text ?? '').match(/\s+|[\p{L}\p{N}_]+|[^\s]/gu) || [];
-    const left=tokens(before),right=tokens(after);
-    const render=(values,changed) => values.map((value,i)=>changed.has(i)?`<mark class="inline-change">${esc(value)}</mark>`:esc(value)).join('');
-    const oldChanges=new Set(),newChanges=new Set();
-    if(left.length*right.length>200000) {
-      let start=0,end=0;
-      while(start<Math.min(left.length,right.length)&&left[start]===right[start])start++;
-      while(end<Math.min(left.length,right.length)-start&&left[left.length-end-1]===right[right.length-end-1])end++;
-      for(let i=start;i<left.length-end;i++)oldChanges.add(i);
-      for(let i=start;i<right.length-end;i++)newChanges.add(i);
-    } else {
-      const table=Array.from({length:left.length+1},()=>new Uint32Array(right.length+1));
-      for(let i=left.length-1;i>=0;i--)for(let j=right.length-1;j>=0;j--)table[i][j]=left[i]===right[j]?table[i+1][j+1]+1:Math.max(table[i+1][j],table[i][j+1]);
-      let i=0,j=0;
-      while(i<left.length||j<right.length) {
-        if(i<left.length&&j<right.length&&left[i]===right[j]){i++;j++;}
-        else if(i<left.length&&(j===right.length||table[i+1][j]>=table[i][j+1]))oldChanges.add(i++);
-        else newChanges.add(j++);
-      }
-    }
-    return [render(left,oldChanges),render(right,newChanges)];
-  }
+  const inlineChanges = window.AblationInlineChanges;
+
   function rowMarkup(row) {
     const plus=`<button type="button" class="line-plus" data-plus="${row.index}" aria-label="在${esc(row.new_line!=null?'新版第 '+row.new_line+' 行':'旧版第 '+row.old_line+' 行')}添加评论">+</button>`;
     const left=row.before!=null,right=row.after!=null;
     const [beforeHtml,afterHtml]=row.same?[esc(row.before),esc(row.after)]:inlineChanges(row.before,row.after);
-    return `<div class="diff-row"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}${lineLink('L',row.old_line)}<span class="line-sign">${!row.same&&left?'−':''}</span><code>${beforeHtml}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}${lineLink('R',row.new_line)}<span class="line-sign">${!row.same&&right?'+':''}</span><code>${afterHtml}</code></div></div>`;
+    return `<div class="diff-row" data-row-index="${row.index}"><div class="diff-cell ${row.same?'':left?'del':'empty'}">${left&&(!right||row.same)?plus:'<span></span>'}${lineLink('L',row.old_line)}<span class="line-sign">${!row.same&&left?'−':''}</span><code>${beforeHtml}</code></div><div class="diff-cell ${row.same?'same-right':right?'add':'empty'}">${right?plus:'<span></span>'}${lineLink('R',row.new_line)}<span class="line-sign">${!row.same&&right?'+':''}</span><code>${afterHtml}</code></div>${translation.cellMarkup(row.index,row.same)}</div>`;
   }
   function explanationLinks(value) {
     const text=String(value), pattern=/\[([^\]\n]+)\]\((https:\/\/github\.com\/[^)\s]+)\)/g;
@@ -367,7 +363,7 @@
     if(state.editor&&matchesContext(state.editor.anchor))anchorComments.push(state.editor.anchor);
     for(let i=0;i<rows.length;i++)if(!rows[i].same||anchorComments.some(c=>sameAnchor(c,rowWithArtifact(rows[i]))))for(let j=Math.max(0,i-3);j<=Math.min(rows.length-1,i+3);j++)contextLines.add(j);
     if(!contextLines.size)for(let i=0;i<Math.min(rows.length,20);i++)contextLines.add(i);
-    const display=(state.expanded||lineAnchor)?rows:rows.filter((_,i)=>contextLines.has(i)).slice(0,500);
+    const display=(state.expanded||lineAnchor)?rows:rows.filter((_,i)=>contextLines.has(i)).slice(0,translation.columnVisible()?undefined:500);
     function renderRowSet(display, showRationale) {
       let body='',groupOpen=false,rationaleShown=false,lastIndex=-1;
     for(let n=0;n<display.length;n++) {
@@ -417,7 +413,8 @@
     for(const review of state.experiment.reviews || [])if(review.base===state.base&&review.candidate===state.candidate&&review.scenario===state.scenario)(review.comments || []).forEach((comment,index)=>{if(comment.artifact===state.artifact&&!rows.some(row=>sameAnchor(comment,rowWithArtifact(row))))body+=`<details class="preview-details"><summary>查看旧版原文中的评论</summary><pre class="context-snippet">${esc('修改前：\n'+(comment.before||'')+'\n修改后：\n'+(comment.after||''))}</pre>${savedCommentMarkup(review,comment,index)}<button class="text-btn" data-jump-review="${esc(review.id)}" data-comment-index="${index}">查看位置</button></details>`;});
     const plus=rows.filter(r => !r.same&&r.after!=null).length,minus=rows.filter(r => !r.same&&r.before!=null).length;
     $('#diff-file').classList.toggle('unified',state.layout==='unified');
-    $('#diff-file').innerHTML=`${candidateContext()}<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions">${['changes','prompt'].includes(state.artifact)?`<div class="view-grouping" role="group" aria-label="改动组织方式"><button class="text-btn" data-grouping="requirements" aria-pressed="${state.grouping==='requirements'}">按需求变动</button><button class="text-btn" data-grouping="original" aria-pressed="${state.grouping==='original'}">按原文</button></div>`:''}<span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span>${['changes','prompt'].includes(state.artifact)?'<button class="text-btn" data-artifact="request">完整 JSON</button>':''}<button class="text-btn" data-action="copy-line-link" ${lineAnchor?'':'hidden'}>复制行链接</button><button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span></div>${body}`;
+    $('#diff-file').classList.toggle('with-translation',translation.columnVisible());
+    $('#diff-file').innerHTML=`${candidateContext()}<div class="file-top"><div class="file-path"><span aria-hidden="true">▤</span><strong class="artifact-title">${esc(artifactLabels[state.artifact])}</strong></div><div class="file-actions">${translation.toolbar()}${['changes','prompt'].includes(state.artifact)?`<div class="view-grouping" role="group" aria-label="改动组织方式"><button class="text-btn" data-grouping="requirements" aria-pressed="${state.grouping==='requirements'}">按需求变动</button><button class="text-btn" data-grouping="original" aria-pressed="${state.grouping==='original'}">按原文</button></div>`:''}<span class="stat-add">+${plus}</span><span class="stat-del">−${minus}</span>${['changes','prompt'].includes(state.artifact)?'<button class="text-btn" data-artifact="request">完整 JSON</button>':''}<button class="text-btn" data-action="copy-line-link" ${lineAnchor?'':'hidden'}>复制行链接</button><button class="text-btn" data-action="copy-artifact">复制右侧内容</button></div></div><div class="diff-headrow"><span title="${esc(diff.base_label || label(state.experiment.candidates,state.base))}">原始数据 <span class="version-caption">固定</span></span><span title="${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}">修改后 <span class="version-caption">${esc(diff.candidate_label || label(state.experiment.candidates,state.candidate))}</span></span>${translation.columnVisible()?'<span class="translation-column-title">中文翻译</span>':''}</div>${body}`;
     paintLineAnchor();
     const notes=(Array.isArray(diff.notes)?diff.notes:diff.notes?[diff.notes]:[]).filter(n=>!/^Scenario:/.test(objectMessage(n)));
     const promptDiff=['changes','prompt'].includes(state.artifact);

@@ -23,6 +23,15 @@ ablation demo --open
 
 点击 diff 行号可将位置写入 URL，Shift 点击选择同侧多行，再点“复制行链接”或复制地址栏即可引用（例如 `#diff-changes-R97-R105`）。链接固定候选版本、场景与文件；重新打开会高亮并定位到所选行。链接使用本机工作台地址，接收方需能访问同一实例。输出结果仍展示该候选与场景最近一次回放。
 
+在 diff 顶部点击「翻译」，第三列会显示新增、删除文本对应的中文译文。翻译按改动段拆分，最多同时处理 3 段，第三列随模型流式输出逐步显示。每段完成后立即保存，刷新可恢复，失败后再次点击可继续。翻译使用本地配置的独立 LLM 源。
+
+```sh
+ablation config llm --base-url https://model.example.invalid/v1 \
+  --model YOUR_MODEL --api-key-env MODEL_API_KEY
+```
+
+配置写入工作区 `config.json` 的 `llm` 项。支持 `--api chat|responses`、`--thinking disabled`，以及通过 `--credential-command-json '["/absolute/path/to/credential-helper", "argument"]'` 在每次请求前取得凭证。完整参数见 `ablation config llm --help`。
+
 候选说明统一写两句：先交代为什么改，再说明大概修改位置及影响，附核实过的 GitHub 源码链接；来源或位置没查清时注明待确认。CLI 用 `--rationale`，或用 `--rationale-file rationale.md` 读取多行说明；GUI 在 diff 下显示同一段文字和可点击的源码链接。
 
 候选可用 `ablation change-groups <experiment> --candidate <candidate> --file groups.json` 补充需求分组，不改变请求、回放或评论锚点。分组包含 `id`、`title`、中文 `reason`、`effect`、精确文本锚点 `matches` 和源码链接 `sources`（每项为 `label`、`url`）。锚点将关联的 diff 改动段合为一项需求；冲突或未命中的分组会报错。GUI 默认按需求展示，切换“按原文”仍使用逐行高亮和行内评论。源码链接仅接受 GitHub 文件直达链接。
