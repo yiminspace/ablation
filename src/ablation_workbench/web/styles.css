@@ -332,6 +332,8 @@ a.line-number:hover{color:var(--blue);text-decoration:underline;background:var(-
 
 /* The translation is a third diff column. Each source row retains its own height. */
 .diff-file.with-translation .diff-headrow,.diff-file.with-translation .diff-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.diff-file.with-translation .diff-row>.diff-cell{display:grid}
+.diff-file.with-translation .diff-row>.diff-cell+.diff-cell{border-left:1px solid var(--border)}
 .diff-translation{min-width:0;border-left:1px solid var(--border);font:13px/1.75 var(--vg-font-ui);overflow-wrap:anywhere}
 .translation-before,.translation-after{display:grid;grid-template-columns:14px minmax(0,1fr);gap:5px;padding:4px 10px;white-space:pre-wrap}
 .translation-before{background:var(--del)}
