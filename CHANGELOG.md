@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.8.0 (2026-11-14)
+
+### Features
+
+- 翻译提示词改动 ([#21](https://github.com/yiminspace/ablation/pull/21),
+  [`97c7489`](https://github.com/yiminspace/ablation/commit/97c7489e48ab6d6afb735cff823ace568eafe1aa))
+
+
 ## v0.7.0 (2026-11-13)
 
 ### Bug Fixes
