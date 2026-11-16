@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 import os
 import shlex
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from . import __version__
@@ -16,7 +16,7 @@ from .replay import endpoint_for, evaluate_checks, replay_request
 from .sources import configured_secrets, env_value, normalize_source, profile_for, redact, validate_request
 from .storage import Store, atomic_json, load_json
 
-ARTIFACTS = {"changes", "prompt", "input", "request", "response", "checks", "source"}
+ARTIFACTS = {"changes", "prompt", "input", "request", "response", "checks", "source", "prompt-files"}
 
 
 def writable_intent() -> None:
@@ -74,6 +74,24 @@ def split_diff(before: str, after: str) -> list[dict]:
             kind = "equal" if operation == "equal" else ("replace" if old_line and new_line else "remove" if old_line else "add")
             rows.append({"old_line": old_line, "new_line": new_line, "before": left[old_line - 1] if old_line else None, "after": right[new_line - 1] if new_line else None, "kind": kind})
     return rows
+
+
+def validate_prompt_files(files: Any) -> list[dict]:
+    if not isinstance(files, list):
+        raise ValueError("Prompt files must be a list")
+    paths = set()
+    for item in files:
+        if not isinstance(item, dict) or set(item) != {"path", "before", "after"}:
+            raise ValueError("Each prompt file requires path, before, and after")
+        path = item["path"]
+        if (not isinstance(path, str) or not path.strip() or PurePosixPath(path).is_absolute()
+                or ".." in PurePosixPath(path).parts or '\\' in path or path != str(PurePosixPath(path))
+                or path == "." or any(ord(c) < 32 for c in path) or path in paths):
+            raise ValueError("Prompt file paths must be unique repository-relative paths")
+        if not isinstance(item["before"], str) or not isinstance(item["after"], str):
+            raise ValueError("Prompt file contents must be text")
+        paths.add(path)
+    return files
 
 
 def display_json(value: Any) -> str:
@@ -215,15 +233,19 @@ class Workbench:
             self.store.save(experiment, bump=False)
         return experiment
 
-    def add_candidate(self, experiment_id: str, *, label: str, patch: list, rationale: str, parent: str = "baseline") -> dict:
+    def add_candidate(self, experiment_id: str, *, label: str, patch: list, rationale: str, parent: str = "baseline", prompt_files: list | None = None) -> dict:
         writable_intent()
         if not isinstance(label, str) or not label.strip() or not isinstance(rationale, str) or not rationale.strip():
             raise ValueError("Candidate label and rationale are required")
         with self.store.lock(experiment_id):
             experiment = self._load(experiment_id)
-            find_item(experiment["candidates"], parent, "candidate")
+            parent_item = find_item(experiment["candidates"], parent, "candidate")
             sanitized = redact(patch, configured_secrets(self.store.config()))
             candidate = redact({"id": new_id("candidate"), "label": label.strip(), "parent": parent, "patch": sanitized, "rationale": rationale, "created_at": timestamp()}, configured_secrets(self.store.config()))
+            files = parent_item.get("prompt_files", []) if prompt_files is None else prompt_files
+            files = validate_prompt_files(redact(files, configured_secrets(self.store.config())))
+            if files:
+                candidate["prompt_files"] = files
             experiment["candidates"].append(candidate)
             request_for(experiment, candidate["id"])
             validate_patch_credentials(request_for(experiment, parent), candidate["patch"], configured_secrets(self.store.config()))
@@ -402,6 +424,16 @@ class Workbench:
         after_request = request_for(experiment, candidate, scenario)
         base_label, candidate_label = base_item["label"], candidate_item["label"]
         notes = [f"Scenario: {scene['label']} ({scene['origin']}). {scene['description']}"]
+        if artifact == "prompt-files":
+            left = {item["path"]: item for item in base_item.get("prompt_files", [])}
+            right = {item["path"]: item for item in candidate_item.get("prompt_files", [])}
+            files = []
+            for path in dict.fromkeys([*right, *left]):
+                before = left[path]["after"] if path in left else right[path]["before"]
+                after = right[path]["after"] if path in right else left[path]["before"]
+                files.append({"path": path, "before": before, "after": after, "rows": split_diff(before, after)})
+            return {"artifact": artifact, "base_label": base_label, "candidate_label": candidate_label,
+                    "files": files, "rows": [], "rationale": candidate_item["rationale"]}
         if artifact == "changes":
             before = prompt_view(experiment["baseline"]["request"])
             after = prompt_view(request_for(experiment, candidate, "original"))
@@ -646,6 +678,9 @@ class Workbench:
         require(baseline_candidate.get("patch") == [] and original.get("patch") == [], "baseline and original scenario must remain unchanged")
         for item in experiment["candidates"]:
             validate_change_groups(item.get("change_groups", []))
+            files = validate_prompt_files(item.get("prompt_files", []))
+            require(redact(files) == files, "prompt files contain sensitive fields")
+            require(item["id"] != "baseline" or not files, "baseline cannot contain candidate prompt files")
             for key in ("label", "rationale", "created_at"):
                 text(item.get(key), "candidate " + key)
             require(isinstance(item.get("patch"), list), "candidate patch must be a list")
@@ -746,9 +781,20 @@ class Workbench:
             require(snapshot["captured_revision"] <= experiment["revision"] and isinstance(snapshot.get("diffs"), dict), "invalid snapshot content")
             for artifact, diff in snapshot["diffs"].items():
                 require(artifact in ARTIFACTS and isinstance(diff, dict), "invalid snapshot artifact")
-                for key in ("base_label", "candidate_label", "artifact", "before", "after", "rationale"):
+                for key in ("base_label", "candidate_label", "artifact", "rationale"):
                     text(diff.get(key), "snapshot " + key)
                 require(diff["artifact"] == artifact and isinstance(diff.get("rows"), list), "invalid snapshot diff")
+                if artifact == "prompt-files":
+                    files = diff.get("files")
+                    require(diff["rows"] == [] and isinstance(files, list), "invalid source snapshot")
+                    require(all(isinstance(file, dict) and set(file) == {"path", "before", "after", "rows"}
+                                for file in files), "invalid source snapshot file")
+                    validate_prompt_files([{key: file[key] for key in ("path", "before", "after")} for file in files])
+                    require(all(file["rows"] == split_diff(file["before"], file["after"]) for file in files),
+                            "source snapshot rows do not match preserved text")
+                    continue
+                for key in ("before", "after"):
+                    text(diff.get(key), "snapshot " + key)
                 require(isinstance(diff.get("notes"), list) and all(isinstance(note, str) for note in diff["notes"]), "invalid snapshot notes")
                 require(diff["rows"] == split_diff(diff["before"], diff["after"]), "snapshot diff rows do not match preserved text")
             keys = ("id", "revision", "base", "candidate", "scenario", "intent", "comments", "summary")

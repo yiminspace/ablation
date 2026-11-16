@@ -86,6 +86,21 @@ async function until(fn){for(let index=0;index<150;index++){const value=await fn
   await page.reload();await page.locator('.translation-after').first().waitFor();
   assert.equal(packets.length,3,'Refreshing during translation does not resubmit inference');
   assert.equal((await api(`/api/experiments/${eid}`)).runs.length,0);
+  delay=0;
+  await api(`/api/experiments/${eid}/candidates`,{label:'Prompt sources',rationale:'Two files',patch:[],prompt_files:[
+    {path:'prompts/entry.md',before:'Old entry',after:'New entry'},
+    {path:'skills/feedback.md',before:'Old guidance',after:'New guidance'},
+  ]});
+  await page.goto(url+`?experiment=${eid}`);
+  await until(async()=>await button.count()&&!(await button.isDisabled()));
+  await button.click();
+  for(const path of ['prompts/entry.md','skills/feedback.md']){
+    const file=page.locator('.requirement-group').filter({hasText:path});
+    await file.locator('.translation-after').waitFor();
+  }
+  assert.equal(packets.length,4);
+  const payload=packets.at(-1).messages[1].content;
+  assert(payload.includes('New entry')&&payload.includes('New guidance'));
   assert.deepEqual(pageErrors,[]);
   console.log('Translation browser checks passed (one button/third column/source preservation/diff-only payload/escaping/cache/refresh/version/error/mobile).');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{

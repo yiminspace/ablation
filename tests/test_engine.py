@@ -35,6 +35,34 @@ class EngineFixture(unittest.TestCase):
 
 
 class EngineTests(EngineFixture):
+    def test_prompt_file_edits_create_a_new_candidate_without_changing_replay(self):
+        files = [
+            {"path": "prompts/preflight.md", "before": "Reject", "after": "Reject, then offer feedback"},
+            {"path": "prompts/feedback.md", "before": "Allowed requests", "after": "Allowed requests and refusals"},
+        ]
+        experiment = self.workbench.add_candidate(self.id, label="Source diff", patch=[], rationale="Review both prompts.", prompt_files=files)
+        original = experiment["candidates"][-1]["id"]
+        diff = self.workbench.compare(self.id, candidate=original, artifact="prompt-files")
+        self.assertEqual([entry["path"] for entry in diff["files"]], [entry["path"] for entry in files])
+        self.assertEqual([entry["rows"][0]["after"] for entry in diff["files"]], [entry["after"] for entry in files])
+        edited = [files[0], {**files[1], "after": "Include refusals"}]
+        experiment = self.workbench.add_candidate(self.id, parent=original, label="Edit feedback", patch=[], rationale="Simplify the wording.", prompt_files=edited)
+        latest = experiment["candidates"][-1]["id"]
+        self.assertEqual(request_for(experiment, original), request_for(experiment, latest))
+        self.assertEqual(self.workbench.compare(self.id, candidate=original, artifact="prompt-files")["files"][1]["after"], files[1]["after"])
+        self.assertEqual(self.workbench.compare(self.id, candidate=latest, artifact="prompt-files")["files"][1]["after"], edited[1]["after"])
+
+    def test_source_diff_review_survives_bundle_round_trip(self):
+        files = [{"path": "prompts/feedback.md", "before": "old", "after": "new"}]
+        exp = self.workbench.add_candidate(self.id, label="Source", patch=[], rationale="Update feedback.", prompt_files=files)
+        candidate = exp["candidates"][-1]["id"]
+        review = self.workbench.submit_review(self.id, {"candidate": candidate, "comments": [
+            {"artifact": "prompt-files", "text": "Review the source change."},
+        ]})
+        exported = self.workbench.export_bundle(self.id, Path(self.temp.name) / "source-review.json")
+        imported = self.workbench.import_bundle(exported)
+        self.assertEqual(imported["reviews"][0]["snapshot"], review["snapshot"])
+
     def test_changes_only_show_candidate_prompt_not_input_or_scenario(self):
         experiment = self.workbench.add_candidate(self.id, label="Remove message", patch=[{"op": "remove", "path": "/input/0"}], rationale="Check input isolation.")
         candidate = experiment["candidates"][-1]["id"]

@@ -84,7 +84,7 @@ async function main(){
   assert.equal(await page.locator('#base-select, #candidate-select').count(),0);
   assert.equal(await page.locator('[data-artifact="changes"]').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#more-evidence').count(),0);
-  assert.equal(await page.locator('.artifact-nav button').count(),2);
+  assert.equal(await page.locator('.artifact-nav button:visible').count(),2);
   assert.equal(await page.locator('.global-header').isVisible(),true);
   assert.equal(await page.locator('.page-tab[data-tab="runs"]').isVisible(),true);
   assert.equal(await page.locator('html').getAttribute('data-theme'),'github');
@@ -415,6 +415,27 @@ async function main(){
   await page.goto(url+`?experiment=${big.id}&candidate=${bigCandidate}`);
   await page.locator('[data-grouping="requirements"]').click();
   await page.locator('.requirement-group').getByText('ungrouped line 1198',{exact:false}).waitFor();
+  const sourceFiles = [
+    {path:'prompts/prohibited.md',before:'Original rule',after:'\nCandidate rule\r\n'},
+    {path:'skills/feedback.md',before:'Original feedback',after:'Candidate feedback'},
+  ];
+  const sourceCandidate=(await api(`/api/experiments/${big.id}/candidates`,{label:'Source prompts',rationale:'Source comparison',patch:[],prompt_files:sourceFiles})).candidates.at(-1);
+  await page.goto(url+`?experiment=${big.id}`);
+  await page.locator('#diff-view').getByText('Candidate feedback',{exact:true}).waitFor();
+  await page.locator('#diff-view').getByText('Candidate rule',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'编辑提示词',exact:true}).click();
+  const editor=page.locator('#prompt-files-form');
+  assert.equal(await editor.locator('[name="file-0"]').inputValue(),'\nCandidate rule\n');
+  assert.equal(await editor.locator('[name="file-1"]').inputValue(),'Candidate feedback');
+  await editor.locator('[name="file-1"]').fill('Edited feedback');
+  await editor.locator('[name="rationale"]').fill('Update feedback wording');
+  await editor.locator('[type="submit"]').click();
+  await page.locator('#diff-view').getByText('Edited feedback',{exact:true}).waitFor();
+  assert.equal((await api(`/api/experiments/${big.id}`)).candidates.at(-1).prompt_files[0].after,sourceFiles[0].after);
+  await page.reload();
+  await page.locator('#diff-view').getByText('Edited feedback',{exact:true}).waitFor();
+  await page.goto(url+`?experiment=${big.id}&candidate=${sourceCandidate.id}`);
+  await page.locator('#diff-view').getByText('Candidate feedback',{exact:true}).waitFor();
   assert.deepEqual(pageErrors,[]);
   console.log(JSON.stringify({ok:true,experiment:eid,pairedRequests:packets.length,reviews:exp.reviews.length,agentReplies:exp.reviews[0].replies.length,checks:exp.runs.map(r=>r.passed),pageErrors}));
 }
