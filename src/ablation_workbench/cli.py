@@ -118,6 +118,7 @@ def parser():
     rationale.add_argument("--rationale", help="Why the change helps, then verified source location and impact; supports GitHub Markdown links")
     rationale.add_argument("--rationale-file", type=Path, help="UTF-8 file containing the same explanation, including newlines and source links")
     candidate.add_argument("--parent", default="baseline")
+    candidate.add_argument("--prompt-files", help="JSON list of repository-relative path and before/after text")
     groups = sub.add_parser("change-groups", help="Set review annotations without changing requests or replay evidence")
     groups.add_argument("experiment"); groups.add_argument("--candidate", required=True)
     groups.add_argument("--file", required=True, help="JSON requirement groups with Chinese reasons and GitHub source links")
@@ -140,7 +141,7 @@ def parser():
     diff = sub.add_parser("diff")
     diff.add_argument("experiment"); diff.add_argument("--base", default="baseline")
     diff.add_argument("--candidate", default="baseline"); diff.add_argument("--scenario", default="original")
-    diff.add_argument("--artifact", choices=["changes", "prompt", "input", "request", "response", "checks", "source"], default="request")
+    diff.add_argument("--artifact", choices=["changes", "prompt", "input", "request", "response", "checks", "source", "prompt-files"], default="request")
     review = sub.add_parser("review"); rs = review.add_subparsers(dest="review_action", required=True)
     submit = rs.add_parser("submit"); submit.add_argument("experiment"); submit.add_argument("--file", required=True)
     text = rs.add_parser("text"); text.add_argument("experiment"); text.add_argument("review")
@@ -226,7 +227,8 @@ def main(argv=None):
                 serve(workbench, experiment_id=args.experiment, port=args.port, open_browser=not args.no_open)
                 return 0
         elif cmd == "candidate":
-            result = workbench.add_candidate(args.experiment, label=args.label, patch=read_json(args.patch), rationale=args.rationale_file.read_text(encoding="utf-8") if args.rationale_file else args.rationale, parent=args.parent)
+            result = workbench.add_candidate(args.experiment, label=args.label, patch=read_json(args.patch), rationale=args.rationale_file.read_text(encoding="utf-8") if args.rationale_file else args.rationale, parent=args.parent,
+                prompt_files=read_json(args.prompt_files) if args.prompt_files else None)
         elif cmd == "change-groups":
             result = workbench.set_change_groups(args.experiment, candidate=args.candidate, groups=read_json(args.file))
         elif cmd == "scenario":

@@ -106,6 +106,8 @@ ablation --workspace ./experiments diff EXPERIMENT_ID \
   --candidate CANDIDATE_ID --artifact response
 ```
 
+To review all source prompt edits together, pass `--prompt-files FILE` when creating a candidate. The JSON file contains a list of repository-relative `path`, `before`, and `after` strings, including files used only after a skill loads. View them with `diff --artifact prompt-files` or edit them in the GUI. Saving creates a new candidate and selects it. Source text does not alter the rendered request or continuation, so update the request patch and continuation context before replaying source edits.
+
 The GUI offers the same candidate/scenario creation and replay controls. Runs save the actual request, response, request hash, timing and assertion results. Compare prompt, scenario input, full request, response, checks, and source reconstruction. HTTP failures are separate from failed assertions. A run without checks is **unscored**, not passing. Repetition counts are not independent scenario counts or statistical reliability claims.
 
 The initial view fixes the imported original request on the left and shows the modified request on the right. Both sides retain the original JSON structure and field order. Instructions, tool descriptions, and input-message changes appear together, with unchanged context collapsed. Older versions and candidate/scenario creation live in **运行记录**. The main view contains only actual changes and model outputs.

@@ -6,8 +6,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const json = value => typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   const id = () => globalThis.crypto?.randomUUID?.() || `review-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const artifacts = {changes:'changes.txt',prompt:'prompt.txt', input:'scenario-input.json', request:'request.json', response:'response.json', checks:'checks.json', source:'source.json'};
-  const artifactLabels = {changes:'提示词改动',prompt:'提示词',input:'测试输入',request:'完整请求',response:'输出结果',checks:'判断标准',source:'原始数据'};
+  const artifacts = {changes:'changes.txt','prompt-files':'prompt-files.json',prompt:'prompt.txt', input:'scenario-input.json', request:'request.json', response:'response.json', checks:'checks.json', source:'source.json'};
+  const artifactLabels = {changes:'提示词改动','prompt-files':'完整源码 Diff',prompt:'提示词',input:'测试输入',request:'完整请求',response:'输出结果',checks:'判断标准',source:'原始数据'};
   const STORE = 'ablation.workbench.drafts.v1';
   const state = {experiment:null, experiments:[], config:{}, jobs:[], update:null, base:'baseline', candidate:'baseline', followLatest:true, scenario:'original', artifact:'changes', layout:'split', grouping:'requirements', snapshotReview:null, tab:'diff', diff:null, diffKey:'', groups:[], replyDrafts:{}, replyOpen:null, editor:null, modal:null, groupId:null, busy:false, requestSequence:0, diffSequence:0, lastJobs:'', deferred:false, whatsNew:false, expanded:false, focusBeforeModal:null, toastTimer:null};
   let pollRunning = false;
@@ -127,13 +127,19 @@
     if(state.scenario==='original')url.searchParams.delete('scenario');else url.searchParams.set('scenario',state.scenario);
     if(url.href!==location.href)history[push?'pushState':'replaceState']({},'',url);
   }
+  function currentPromptFiles() {
+    return state.experiment?.candidates?.find(item=>item.id===state.candidate)?.prompt_files || [];
+  }
+  function defaultPromptArtifact() {
+    return currentPromptFiles().length?'prompt-files':'changes';
+  }
   function viewCandidateVersion(candidate,{preserveScenario=false}={}) {
     if(!state.experiment?.candidates?.some(item=>item.id===candidate))return;
     clearLineAnchor();
     if(state.candidate!==candidate){stashEditor();state.editor=null;persist();}
     const scenario=preserveScenario&&state.experiment.scenarios?.some(item=>item.id===state.scenario)?state.scenario:state.experiment.runs?.findLast(run=>run.candidate===candidate)?.scenario || 'original';
     state.snapshotReview=null;state.followLatest=candidate===latestCandidateId();state.base='baseline';state.candidate=candidate;
-    state.artifact='changes';state.scenario=scenario;state.tab='diff';state.expanded=false;
+    state.artifact=defaultPromptArtifact();state.scenario=scenario;state.tab='diff';state.expanded=false;
     updateCandidateURL(true);
   }
   function showLatestCandidate() {
@@ -145,7 +151,7 @@
     if(!state.followLatest||state.snapshotReview)return;
     const latest=latestCandidateId();
     if(state.candidate!==latest) {
-      stashEditor();state.editor=null;persist();state.candidate=latest;state.base='baseline';state.expanded=false;state.diff=null;state.diffKey='';state.diffSequence++;
+      stashEditor();state.editor=null;persist();state.candidate=latest;state.base='baseline';if(['changes','prompt-files'].includes(state.artifact))state.artifact=defaultPromptArtifact();state.expanded=false;state.diff=null;state.diffKey='';state.diffSequence++;
     }
     updateCandidateURL();
   }
@@ -192,7 +198,7 @@
       if(changedSession){state.tab='diff';$('#main').scrollTop=0;}
       const params=new URL(location.href).searchParams;
       const requestedCandidate=updateURL?null:params.get('candidate'),requestedScenario=updateURL?null:params.get('scenario');
-      state.base='baseline';state.candidate=experiment.candidates?.some(c=>c.id===requestedCandidate)?requestedCandidate:experiment.candidates?.at(-1)?.id || 'baseline';state.scenario=experiment.scenarios?.some(s=>s.id===requestedScenario)?requestedScenario:experiment.runs?.findLast(r=>r.candidate===state.candidate)?.scenario || 'original';state.artifact='changes';state.diff=null;state.diffKey='';state.expanded=false;
+      state.base='baseline';state.candidate=experiment.candidates?.some(c=>c.id===requestedCandidate)?requestedCandidate:experiment.candidates?.at(-1)?.id || 'baseline';state.scenario=experiment.scenarios?.some(s=>s.id===requestedScenario)?requestedScenario:experiment.runs?.findLast(r=>r.candidate===state.candidate)?.scenario || 'original';state.artifact=defaultPromptArtifact();state.diff=null;state.diffKey='';state.expanded=false;
       state.followLatest=state.candidate===latestCandidateId()&&!requestedCandidate;
       if(updateURL)clearLineAnchor();else restoreLineAnchor();
       if (updateURL) { const u=new URL(location.href);u.searchParams.set('experiment',experiment.id);u.searchParams.delete('candidate');u.searchParams.delete('scenario');history.pushState({},'',u); }
@@ -215,7 +221,7 @@
 
     $('#discussion-count').textContent=e.reviews?.length || 0; $('#discussion-count').hidden=!e.reviews?.length; $('#runs-count').textContent=e.runs?.length || 0;$('#runs-count').hidden=!e.runs?.length;
     updateDraftCount(); renderJobs(); renderDiscussion(); renderRuns(); renderRunLogFeed();
-    $$('[data-artifact]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.artifact===state.artifact)));
+    $$('[data-artifact]').forEach(el=>{el.setAttribute('aria-pressed',String(el.dataset.artifact===state.artifact));if(el.dataset.artifact==='prompt-files')el.hidden=!currentPromptFiles().length;});
     $$('[data-layout]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.layout===state.layout)));
     switchTab(state.tab);renderRunDrawer();
   }
@@ -354,8 +360,29 @@
     const editor=state.editor;if(!editor)return '';
     return `<div class="thread"><div class="comment-editor"><div class="editor-head"><strong>添加评论</strong><span class="muted">${esc(locationText(editor.anchor))}</span></div><div class="editor-body"><textarea class="vg-input" id="inline-comment" aria-label="行内评论" maxlength="10000" placeholder="写一句意见，或问问为什么这样修改。">${esc(editor.text)}</textarea></div><p id="inline-error" class="editor-error" role="status"></p><div class="editor-footer"><button class="vg-btn btn" data-action="cancel-comment">取消</button><button class="vg-btn btn primary" data-action="add-comment">${editor.commentId?'更新评论':'添加评论'}</button></div></div></div>`;
   }
+  function renderPromptFiles(diff) {
+    const container=$('#diff-file');
+    container.classList.remove('unified','with-translation');
+    const files=diff.files.map(file=>{
+      const context=new Set();
+      file.rows.forEach((row,index)=>{
+        if(row.kind!=='equal')for(let offset=-3;offset<=3;offset++)context.add(index+offset);
+      });
+      const visible=state.expanded?file.rows:file.rows.filter((_,index)=>context.has(index));
+      const rows=visible.map(row=>{
+        const [before,after]=row.kind==='equal'?[esc(row.before),esc(row.after)]:inlineChanges(row.before,row.after);
+        const cell=(side,number,html)=>`<div class="diff-cell ${row.kind==='equal'?'':number==null?'empty':side}"><span></span><span class="line-number">${number??''}</span><span class="line-sign">${row.kind==='equal'||number==null?'':side==='add'?'+':'−'}</span><code>${html}</code></div>`;
+        return `<div class="diff-row">${cell('del',row.old_line,before)}${cell('add',row.new_line,after)}</div>`;
+      }).join('');
+      return `<section class="requirement-group"><div class="file-top"><strong class="file-path">${esc(file.path)}</strong></div>${rows||'<div class="file-empty">此文件没有改动。</div>'}</section>`;
+    }).join('');
+    container.innerHTML=`${candidateContext()}<div class="file-top"><strong>完整源码 Diff</strong><div class="file-actions"><button class="text-btn" data-action="expand-diff">${state.expanded?'已展开全文':'展开全文'}</button><button class="vg-btn btn" data-action="edit-prompt-files">编辑提示词</button></div></div>${files}${rationaleMarkup()}`;
+    $('#comparison-status').hidden=true;
+  }
+
   function renderDiff() {
     if(!state.diff) return;
+    if(state.artifact==='prompt-files'){renderPromptFiles(state.diff);return;}
     const rows=normalizedRows(),diff=state.diff;
     const contextLines=new Set();
     const anchorComments=currentGroups().filter(matchesContext).flatMap(g=>g.comments);
@@ -513,6 +540,12 @@
   function candidateModal() {
     if(!state.experiment)return;
     openModal('candidate','新建提示词候选',`<p class="dialog-explanation">以指定候选为父版本应用 JSON Patch，保留原始请求。完整工具列表不会因为修改一处说明而被替换。</p><form id="candidate-form"><div class="form-columns"><label class="field"><span class="field-label">候选名称</span><input class="vg-input" name="label" required maxlength="150" placeholder="例如：通用完成条件"></label><label class="field"><span class="field-label">父版本</span><select class="vg-input" name="parent">${state.experiment.candidates.map(c=>`<option value="${esc(c.id)}" ${c.id===state.candidate?'selected':''}>${esc(c.label || c.id)}</option>`).join('')}</select></label></div><label class="field"><span class="field-label">修改说明</span><textarea class="vg-input" name="rationale" required maxlength="10000" placeholder="先说明为什么改，再说明大概修改位置和影响范围；可附 GitHub 源码链接。"></textarea><span class="field-help">说明显示在 diff 下方。源码链接可写成 [位置说明](GitHub源码地址)，未确认的位置或影响请注明待确认。</span></label><label class="field"><span class="field-label">JSON Patch</span><textarea class="vg-input code-input" name="patch" required spellcheck="false">[]</textarea><span class="field-help">例如 [{"op":"replace","path":"/tools/0/function/description","value":"新的工具说明"}]。路径以完整请求 为准。</span></label>${formError()}<div class="form-actions"><button type="button" class="vg-btn btn" data-action="close-modal">取消</button><button type="submit" class="vg-btn btn primary">创建候选</button></div></form>`);
+  }
+  function promptFilesModal() {
+    const files=currentPromptFiles(), parent=state.candidate;
+    if(!files.length)return;
+    const fields=files.map((file,index)=>`<label class="field"><span class="field-label">${esc(file.path)}</span><textarea class="vg-input code-input" name="file-${index}" rows="10" spellcheck="false">${esc(file.after)}</textarea></label>`).join('');
+    openModal('prompt-files','编辑候选提示词',`<form id="prompt-files-form" data-parent="${esc(parent)}"><p class="dialog-explanation">保存为新候选。回放仍使用该候选的请求补丁和续接上下文，请在重跑前同步渲染后的指令。</p>${fields}<label class="field"><span class="field-label">候选名称</span><input class="vg-input" name="label" required value="${esc(label(state.experiment.candidates,parent))} · 编辑"></label><label class="field"><span class="field-label">改动说明</span><textarea class="vg-input" name="rationale" required></textarea></label>${formError()}<div class="form-actions"><button type="button" class="vg-btn btn" data-action="close-modal">取消</button><button type="submit" class="vg-btn btn primary">保存新候选</button></div></form>`,true);
   }
   function scenarioModal() {
     if(!state.experiment)return;
@@ -864,6 +897,7 @@
         case 'import':importModal();break;
         case 'demo':await createDemo(button);break;
         case 'candidate':candidateModal();break;
+        case 'edit-prompt-files':promptFilesModal();break;
         case 'scenario':scenarioModal();break;
         case 'run':runModal();break;
         case 'review':openReview();break;
@@ -924,6 +958,12 @@
       } else if(form.id==='candidate-form') {
         experiment=await api(endpoint('/candidates'),{label:data.get('label'),parent:data.get('parent'),rationale:data.get('rationale'),patch:parseArray(data.get('patch'),'JSON Patch')});
         state.experiment=experiment;showLatestCandidate();state.busy=false;closeModal();renderExperiment();await loadDiff();toast('候选已保存；尚未运行模型。');
+      } else if(form.id==='prompt-files-form') {
+        const parent=state.experiment.candidates.find(item=>item.id===form.dataset.parent);
+        if(!parent?.prompt_files)throw new Error('找不到源候选。');
+        const files=parent.prompt_files.map((file,index)=>({...file,after:data.get(`file-${index}`)}));
+        experiment=await api(endpoint('/candidates'),{label:data.get('label'),parent:parent.id,rationale:data.get('rationale'),patch:[],prompt_files:files});
+        state.experiment=experiment;showLatestCandidate();state.busy=false;closeModal();renderExperiment();await loadDiff();toast('已保存并切到最新候选。');
       } else if(form.id==='scenario-form') {
         experiment=await api(endpoint('/scenarios'),{label:data.get('label'),description:data.get('description'),origin:'synthetic',patch:parseArray(data.get('patch'),'输入 JSON Patch'),checks:parseArray(data.get('checks'),'响应断言')});
         state.experiment=experiment;state.scenario=experiment.scenarios.at(-1).id;state.artifact='changes';state.tab='diff';state.busy=false;closeModal();renderExperiment();await loadDiff();toast('人工构造场景已保存；尚未运行模型。');
