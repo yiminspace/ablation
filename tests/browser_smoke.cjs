@@ -416,7 +416,7 @@ async function main(){
   await page.locator('[data-grouping="requirements"]').click();
   await page.locator('.requirement-group').getByText('ungrouped line 1198',{exact:false}).waitFor();
   const sourceFiles = [
-    {path:'prompts/prohibited.md',before:'Original rule',after:'Candidate rule'},
+    {path:'prompts/prohibited.md',before:'Original rule',after:'\nCandidate rule\r\n'},
     {path:'skills/feedback.md',before:'Original feedback',after:'Candidate feedback'},
   ];
   const sourceCandidate=(await api(`/api/experiments/${big.id}/candidates`,{label:'Source prompts',rationale:'Source comparison',patch:[],prompt_files:sourceFiles})).candidates.at(-1);
@@ -425,11 +425,13 @@ async function main(){
   await page.locator('#diff-view').getByText('Candidate rule',{exact:true}).waitFor();
   await page.getByRole('button',{name:'编辑提示词',exact:true}).click();
   const editor=page.locator('#prompt-files-form');
+  assert.equal(await editor.locator('[name="file-0"]').inputValue(),'\nCandidate rule\n');
   assert.equal(await editor.locator('[name="file-1"]').inputValue(),'Candidate feedback');
   await editor.locator('[name="file-1"]').fill('Edited feedback');
   await editor.locator('[name="rationale"]').fill('Update feedback wording');
   await editor.locator('[type="submit"]').click();
   await page.locator('#diff-view').getByText('Edited feedback',{exact:true}).waitFor();
+  assert.equal((await api(`/api/experiments/${big.id}`)).candidates.at(-1).prompt_files[0].after,sourceFiles[0].after);
   await page.reload();
   await page.locator('#diff-view').getByText('Edited feedback',{exact:true}).waitFor();
   await page.goto(url+`?experiment=${big.id}&candidate=${sourceCandidate.id}`);

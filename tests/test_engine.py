@@ -52,6 +52,17 @@ class EngineTests(EngineFixture):
         self.assertEqual(self.workbench.compare(self.id, candidate=original, artifact="prompt-files")["files"][1]["after"], files[1]["after"])
         self.assertEqual(self.workbench.compare(self.id, candidate=latest, artifact="prompt-files")["files"][1]["after"], edited[1]["after"])
 
+    def test_source_diff_review_survives_bundle_round_trip(self):
+        files = [{"path": "prompts/feedback.md", "before": "old", "after": "new"}]
+        exp = self.workbench.add_candidate(self.id, label="Source", patch=[], rationale="Update feedback.", prompt_files=files)
+        candidate = exp["candidates"][-1]["id"]
+        review = self.workbench.submit_review(self.id, {"candidate": candidate, "comments": [
+            {"artifact": "prompt-files", "text": "Review the source change."},
+        ]})
+        exported = self.workbench.export_bundle(self.id, Path(self.temp.name) / "source-review.json")
+        imported = self.workbench.import_bundle(exported)
+        self.assertEqual(imported["reviews"][0]["snapshot"], review["snapshot"])
+
     def test_changes_only_show_candidate_prompt_not_input_or_scenario(self):
         experiment = self.workbench.add_candidate(self.id, label="Remove message", patch=[{"op": "remove", "path": "/input/0"}], rationale="Check input isolation.")
         candidate = experiment["candidates"][-1]["id"]

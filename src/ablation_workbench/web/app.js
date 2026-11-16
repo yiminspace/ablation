@@ -550,8 +550,10 @@
   function promptFilesModal() {
     const files=currentPromptFiles(), parent=state.candidate;
     if(!files.length)return;
-    const fields=files.map((file,index)=>`<label class="field"><span class="field-label">${esc(file.path)}</span><textarea class="vg-input code-input" name="file-${index}" rows="10" spellcheck="false">${esc(file.after)}</textarea></label>`).join('');
+    const fields=files.map((file,index)=>`<label class="field"><span class="field-label">${esc(file.path)}</span><textarea class="vg-input code-input" name="file-${index}" rows="10" spellcheck="false"></textarea></label>`).join('');
     openModal('prompt-files','编辑候选提示词',`<form id="prompt-files-form" data-parent="${esc(parent)}"><p class="dialog-explanation">保存为新候选。回放仍使用该候选的请求补丁和续接上下文，请在重跑前同步渲染后的指令。</p>${fields}<label class="field"><span class="field-label">候选名称</span><input class="vg-input" name="label" required value="${esc(label(state.experiment.candidates,parent))} · 编辑"></label><label class="field"><span class="field-label">改动说明</span><textarea class="vg-input" name="rationale" required></textarea></label>${formError()}<div class="form-actions"><button type="button" class="vg-btn btn" data-action="close-modal">取消</button><button type="submit" class="vg-btn btn primary">保存新候选</button></div></form>`,true);
+    const form=$('#prompt-files-form');
+    files.forEach((file,index)=>{form.elements.namedItem(`file-${index}`).value=file.after;});
   }
   function scenarioModal() {
     if(!state.experiment)return;
@@ -967,7 +969,10 @@
       } else if(form.id==='prompt-files-form') {
         const parent=state.experiment.candidates.find(item=>item.id===form.dataset.parent);
         if(!parent?.prompt_files)throw new Error('找不到源候选。');
-        const files=parent.prompt_files.map((file,index)=>({...file,after:data.get(`file-${index}`)}));
+        const files=parent.prompt_files.map((file,index)=>{
+          const edited=data.get(`file-${index}`);
+          return edited===file.after.replace(/\r\n?/g,'\n')?file:{...file,after:edited};
+        });
         experiment=await api(endpoint('/candidates'),{label:data.get('label'),parent:parent.id,rationale:data.get('rationale'),patch:[],prompt_files:files});
         state.experiment=experiment;showLatestCandidate();state.busy=false;closeModal();renderExperiment();await loadDiff();toast('已保存并切到最新候选。');
       } else if(form.id==='scenario-form') {

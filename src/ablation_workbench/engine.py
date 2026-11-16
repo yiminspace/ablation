@@ -781,9 +781,20 @@ class Workbench:
             require(snapshot["captured_revision"] <= experiment["revision"] and isinstance(snapshot.get("diffs"), dict), "invalid snapshot content")
             for artifact, diff in snapshot["diffs"].items():
                 require(artifact in ARTIFACTS and isinstance(diff, dict), "invalid snapshot artifact")
-                for key in ("base_label", "candidate_label", "artifact", "before", "after", "rationale"):
+                for key in ("base_label", "candidate_label", "artifact", "rationale"):
                     text(diff.get(key), "snapshot " + key)
                 require(diff["artifact"] == artifact and isinstance(diff.get("rows"), list), "invalid snapshot diff")
+                if artifact == "prompt-files":
+                    files = diff.get("files")
+                    require(diff["rows"] == [] and isinstance(files, list), "invalid source snapshot")
+                    require(all(isinstance(file, dict) and set(file) == {"path", "before", "after", "rows"}
+                                for file in files), "invalid source snapshot file")
+                    validate_prompt_files([{key: file[key] for key in ("path", "before", "after")} for file in files])
+                    require(all(file["rows"] == split_diff(file["before"], file["after"]) for file in files),
+                            "source snapshot rows do not match preserved text")
+                    continue
+                for key in ("before", "after"):
+                    text(diff.get(key), "snapshot " + key)
                 require(isinstance(diff.get("notes"), list) and all(isinstance(note, str) for note in diff["notes"]), "invalid snapshot notes")
                 require(diff["rows"] == split_diff(diff["before"], diff["after"]), "snapshot diff rows do not match preserved text")
             keys = ("id", "revision", "base", "candidate", "scenario", "intent", "comments", "summary")
