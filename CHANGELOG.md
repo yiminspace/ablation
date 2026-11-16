@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.9.0 (2026-11-16)
+
+### Features
+
+- Add editable and translatable multi-file prompt diffs
+  ([#22](https://github.com/yiminspace/ablation/pull/22),
+  [`84b55a9`](https://github.com/yiminspace/ablation/commit/84b55a92bf36bd0ba053a1208f40b19f6a98c1f1))
+
+
 ## v0.8.0 (2026-11-14)
 
 ### Features
