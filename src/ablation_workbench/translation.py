@@ -163,7 +163,7 @@ class Translation:
         self.credential_lock = threading.Lock()
 
     def context(self, experiment_id, base="baseline", candidate="baseline", scenario="original", artifact="changes", format="readable", review=""):
-        if artifact not in {"changes", "prompt"}:
+        if artifact not in {"changes", "prompt", "prompt-files"}:
             raise ValueError("翻译适用于提示词改动。")
         if review:
             saved = find_item(self.workbench.get(experiment_id)["reviews"], review, "review")
@@ -177,7 +177,8 @@ class Translation:
         selection = dict(base=base, candidate=candidate, scenario=scenario, artifact=artifact, format=format)
         if review:
             selection["review"] = review
-        rows = changed_rows(diff["rows"])
+        diff_rows = [row for file in diff["files"] for row in file["rows"]] if artifact == "prompt-files" else diff["rows"]
+        rows = changed_rows(diff_rows)
         fingerprint = digest({"experiment": experiment_id, "selection": selection, "rows": rows})
         path = self.workbench.store.experiment_path(experiment_id).parent / "translations" / (fingerprint + ".json")
         if path.is_symlink() or path.parent.is_symlink():

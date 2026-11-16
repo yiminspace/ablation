@@ -299,7 +299,7 @@
       }
       if(seq!==state.diffSequence) return;
       state.diff=diff;state.diffKey=key;
-      translation.sync(['changes','prompt'].includes(state.artifact) ? {
+      translation.sync(['changes','prompt','prompt-files'].includes(state.artifact) ? {
         endpoint:endpoint('/translation'), selection:{base:state.base,candidate:state.candidate,scenario:state.scenario,artifact:state.artifact,format,...(saved?.snapshot?.diffs?.[state.artifact]?{review:saved.id}:{})},
         diff,
       } : null);
@@ -362,21 +362,27 @@
   }
   function renderPromptFiles(diff) {
     const container=$('#diff-file');
-    container.classList.remove('unified','with-translation');
+    container.classList.remove('unified');
+    const translated=translation.columnVisible();
+    container.classList.toggle('with-translation',translated);
+    let rowOffset=0;
     const files=diff.files.map(file=>{
       const context=new Set();
       file.rows.forEach((row,index)=>{
         if(row.kind!=='equal')for(let offset=-3;offset<=3;offset++)context.add(index+offset);
       });
-      const visible=state.expanded?file.rows:file.rows.filter((_,index)=>context.has(index));
-      const rows=visible.map(row=>{
+      const offset=rowOffset;
+      rowOffset+=file.rows.length;
+      const rows=file.rows.map((row,index)=>{
+        if(!state.expanded&&!context.has(index))return '';
+        const rowIndex=offset+index;
         const [before,after]=row.kind==='equal'?[esc(row.before),esc(row.after)]:inlineChanges(row.before,row.after);
         const cell=(side,number,html)=>`<div class="diff-cell ${row.kind==='equal'?'':number==null?'empty':side}"><span></span><span class="line-number">${number??''}</span><span class="line-sign">${row.kind==='equal'||number==null?'':side==='add'?'+':'−'}</span><code>${html}</code></div>`;
-        return `<div class="diff-row">${cell('del',row.old_line,before)}${cell('add',row.new_line,after)}</div>`;
+        return `<div class="diff-row" data-row-index="${rowIndex}">${cell('del',row.old_line,before)}${cell('add',row.new_line,after)}${translation.cellMarkup(rowIndex,row.kind==='equal')}</div>`;
       }).join('');
-      return `<section class="requirement-group"><div class="file-top"><strong class="file-path">${esc(file.path)}</strong></div>${rows||'<div class="file-empty">此文件没有改动。</div>'}</section>`;
+      return `<section class="requirement-group"><div class="file-top"><strong class="file-path">${esc(file.path)}</strong></div>${translated&&rows?'<div class="diff-headrow"><span>原始数据</span><span>修改后</span><span class="translation-column-title">中文翻译</span></div>':''}${rows||'<div class="file-empty">此文件没有改动。</div>'}</section>`;
     }).join('');
-    container.innerHTML=`${candidateContext()}<div class="file-top"><strong>完整源码 Diff</strong><div class="file-actions"><button class="text-btn" data-action="expand-diff">${state.expanded?'已展开全文':'展开全文'}</button><button class="vg-btn btn" data-action="edit-prompt-files">编辑提示词</button></div></div>${files}${rationaleMarkup()}`;
+    container.innerHTML=`${candidateContext()}<div class="file-top"><strong>完整源码 Diff</strong><div class="file-actions">${translation.toolbar()}<button class="text-btn" data-action="expand-diff">${state.expanded?'已展开全文':'展开全文'}</button><button class="vg-btn btn" data-action="edit-prompt-files">编辑提示词</button></div></div>${files}${rationaleMarkup()}`;
     $('#comparison-status').hidden=true;
   }
 
