@@ -68,7 +68,7 @@ Remote imports require an explicit `--source-base-url`. Supply a full JSON URL o
 
 ### Translate prompt changes
 
-Click **翻译** in the diff toolbar to reveal a third column with Chinese translations of added and removed text. Changes are split into segments with up to three concurrent requests. The third column renders streamed text as it arrives, and each completed segment is saved immediately. Refresh restores completed segments and follows active work. Configure the translation model source locally:
+When the browser tab and window are active, the visible prompt diff automatically translates added and removed text and opens a third column with Chinese translations. New versions translate automatically while active; background tabs wait until activated. Completed translations are reused, and **翻译** remains available to retry failures. Changes are split into segments with up to three concurrent requests. The third column renders streamed text as it arrives, and each completed segment is saved immediately. Refresh restores completed segments and follows active work. Configure the translation model source locally:
 
 ```sh
 ablation config llm --base-url https://model.example.invalid/v1 \

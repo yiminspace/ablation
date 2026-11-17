@@ -2,6 +2,12 @@
 
 <!-- version list -->
 
+## Unreleased
+
+### Features
+
+- Automatically translate and reveal the active prompt diff, including new versions; defer background tabs and reuse saved translations.
+
 ## v0.9.0 (2026-11-16)
 
 ### Features

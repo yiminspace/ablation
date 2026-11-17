@@ -7,13 +7,14 @@ const source=fs.readFileSync(path.join(__dirname,'../src/ablation_workbench/web/
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const fixture=(id='one')=>({id,rows:[{id:'row_1',index:1,before:'old',after:'new'}],translations:[],busy:false});
-function harness(api, stream){
-  let click;const timers=new Map();let next=0;
-  const context={window:{},URLSearchParams,document:{addEventListener:(type,callback)=>{if(type==='click')click=callback;}},setTimeout:fn=>{timers.set(++next,fn);return next;},clearTimeout:id=>timers.delete(id)};
+function harness(api, stream, active=false){
+  let click;const timers=new Map(),listeners={};let next=0;
+  const listen=(type,callback)=>{(listeners[type] ||= []).push(callback);if(type==='click')click=callback;};
+  const context={window:{addEventListener:listen},URLSearchParams,document:{addEventListener:listen},setTimeout:fn=>{timers.set(++next,fn);return next;},clearTimeout:id=>timers.delete(id)};
   vm.runInNewContext(source,context);
-  const translation=context.window.AblationTranslation({api,onChange(){},stream:stream || (async(path,body,onEvent)=>onEvent({type:'complete',session:await api(path,body)}))});
+  const translation=context.window.AblationTranslation({api,onChange(){},isActive:()=>active,stream:stream || (async(path,body,onEvent)=>onEvent({type:'complete',session:await api(path,body)}))});
   const selection=candidate=>({endpoint:'/translation',selection:{candidate,artifact:'changes'},diff:{rows:[{kind:'replace',before:candidate,after:'new'}]}});
-  return {translation,selection,click:()=>click({target:{closest:()=>({disabled:false})}}),poll:()=>{const callbacks=[...timers.values()];timers.clear();callbacks.forEach(fn=>fn());}};
+  return {translation,selection,setActive:value=>{active=value;},emit:type=>(listeners[type] || []).forEach(fn=>fn()),click:()=>click({target:{closest:()=>({disabled:false})}}),poll:()=>{const callbacks=[...timers.values()];timers.clear();callbacks.forEach(fn=>fn());}};
 }
 
 test('One click reveals a third column with escaped old/new translations',async()=>{
@@ -106,7 +107,7 @@ test('SSE reader handles fragmented UTF-8 and reports an interrupted stream',asy
   const frame=event=>'data: '+JSON.stringify(event)+'\r\n\r\n';
   const bytes=new TextEncoder().encode(frame({type:'partial',rows:[{id:'row_1',before:'中文'}]})+frame({type:'complete',session:{}}));
   let offset=0;
-  const context={window:{},document:{addEventListener(){}},TextDecoder,URLSearchParams,fetch:async()=>({ok:true,headers:{get:()=>'text/event-stream'},body:{getReader:()=>({read:async()=>offset<bytes.length?{value:bytes.slice(offset,++offset),done:false}:{done:true},cancel:async()=>{},releaseLock(){}})}})};
+  const context={window:{addEventListener(){}},document:{addEventListener(){}},TextDecoder,URLSearchParams,fetch:async()=>({ok:true,headers:{get:()=>'text/event-stream'},body:{getReader:()=>({read:async()=>offset<bytes.length?{value:bytes.slice(offset,++offset),done:false}:{done:true},cancel:async()=>{},releaseLock(){}})}})};
   vm.runInNewContext(source,context);
   const events=[];
   await context.window.readTranslationStream('/translation/stream',{},event=>events.push(event));
@@ -134,7 +135,7 @@ test('A dropped connection follows the still-running job without submitting infe
 
 test('An older running API falls back only when the streaming route is absent',async()=>{
   const calls=[],events=[];
-  const context={window:{},document:{addEventListener(){}},TextDecoder,URLSearchParams,fetch:async(path,options)=>{
+  const context={window:{addEventListener(){}},document:{addEventListener(){}},TextDecoder,URLSearchParams,fetch:async(path,options)=>{
     calls.push({path,options});
     return calls.length===1?{ok:false,status:404,json:async()=>({error:{code:'not_found',message:'Unknown experiment route'}})}:{ok:true,json:async()=>({id:'one',rows:[],translations:[]})};
   }};
@@ -151,7 +152,7 @@ test('An older running API falls back only when the streaming route is absent',a
 });
 
 test('Chinese translation highlights changed words while preserving shared sentences',async()=>{
-  const context={window:{},document:{addEventListener(){}},URLSearchParams};
+  const context={window:{addEventListener(){}},document:{addEventListener(){}},URLSearchParams};
   vm.runInNewContext(source,context);
   const before='在选择技能前，先确认用户的目标。';
   const after='在选择技能前，先确认用户的目标和交付位置。';
@@ -170,4 +171,74 @@ test('Chinese translation highlights changed words while preserving shared sente
   assert.equal(added,'<mark class="inline-change">new</mark> rule');
   const [,unsafe]=context.window.AblationInlineChanges('原文','<img src=x onerror=bad()>',true);
   assert(!unsafe.includes('<img'));
+});
+
+
+test('Active diffs automatically translate and expand once, reusing completed results',async()=>{
+  const session=fixture(),finished=deferred();let submissions=0;
+  const ui=harness(async()=>structuredClone(session),async(path,body,receive)=>{
+    submissions++;await finished.promise;
+    receive({type:'complete',session:{...session,translations:[{id:'row_1',before:'旧',after:'新'}]}});
+  },true);
+  ui.translation.sync(ui.selection('one'));await flush();
+  assert.equal(submissions,1);
+  assert.equal(ui.translation.columnVisible(),true);
+  ui.emit('focus');ui.emit('visibilitychange');ui.translation.sync(ui.selection('one'));await flush();
+  assert.equal(submissions,1,'Focus and unchanged polls do not submit duplicate inference');
+  finished.resolve();await flush();
+  ui.setActive(false);ui.setActive(true);ui.emit('focus');await flush();
+  assert.equal(submissions,1);
+  assert(ui.translation.cellMarkup(1,false).includes('旧'));
+});
+
+test('Background diffs wait for activation; new content automatically follows while active',async()=>{
+  let submissions=0;
+  const ui=harness(async()=>fixture(),async(path,body,receive)=>{
+    submissions++;receive({type:'complete',session:{...fixture(),translations:[{id:'row_1',before:'旧',after:body.candidate}]}});
+  });
+  ui.translation.sync(ui.selection('one'));await flush();
+  assert.equal(submissions,0);
+  ui.setActive(true);ui.emit('visibilitychange');ui.emit('focus');await flush();
+  assert.equal(submissions,1);
+  ui.translation.sync(ui.selection('two'));await flush();
+  assert.equal(submissions,2);
+  assert(ui.translation.cellMarkup(1,false).includes('two'));
+  ui.setActive(false);ui.translation.sync(ui.selection('three'));await flush();
+  assert.equal(submissions,2);
+  ui.setActive(true);ui.emit('focus');await flush();
+  assert.equal(submissions,3);
+});
+
+test('Activation during session loading waits, and losing focus before loading defers inference',async()=>{
+  const read=deferred();let submissions=0;
+  const ui=harness(async()=>read.promise,async()=>{submissions++;});
+  ui.translation.sync(ui.selection('one'));
+  ui.setActive(true);ui.emit('focus');
+  assert.equal(submissions,0);
+  ui.setActive(false);read.resolve(fixture());await flush();
+  assert.equal(submissions,0);
+  ui.setActive(true);ui.emit('focus');await flush();
+  assert.equal(submissions,1);
+});
+
+test('Automatic errors do not loop on focus or polls; the button still retries',async()=>{
+  let submissions=0;
+  const ui=harness(async()=>fixture(),async()=>{submissions++;throw new Error('HTTP 502');},true);
+  ui.translation.sync(ui.selection('one'));await flush();
+  assert.equal(submissions,1);
+  ui.emit('focus');ui.emit('visibilitychange');ui.poll();await flush();
+  assert.equal(submissions,1);
+  assert(ui.translation.toolbar().includes('HTTP 502'));
+  ui.click();await flush();assert.equal(submissions,2);
+});
+
+test('Cached and empty diffs never submit automatic inference',async()=>{
+  let submissions=0;
+  const cached=fixture();cached.translations=[{id:'row_1',before:'旧',after:'新'}];
+  const ui=harness(async()=>cached,async()=>{submissions++;},true);
+  ui.translation.sync(ui.selection('one'));await flush();
+  assert.equal(submissions,0);assert.equal(ui.translation.columnVisible(),true);
+  cached.rows=[];cached.translations=[];
+  ui.translation.sync(ui.selection('two'));await flush();
+  assert.equal(submissions,0);
 });
