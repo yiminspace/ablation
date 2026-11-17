@@ -11,7 +11,6 @@ from uuid import uuid4
 SCHEMA_VERSION = 1
 MAX_CALLS = 30
 MAX_REPEATS = 10
-MAX_BYTES = 32 * 1024 * 1024
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 
 

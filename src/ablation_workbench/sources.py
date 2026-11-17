@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from .models import MAX_BYTES, canonical, pointer_get, pointer_tokens
+from .models import canonical, pointer_get, pointer_tokens
 from .storage import load_json
 
 SECRET_KEYS = {"authorization", "proxy-authorization", "cookie", "set-cookie", "api_key", "api-key", "apikey", "x-api-key", "access_token", "refresh_token", "token", "password", "client_secret"}
@@ -188,9 +188,7 @@ def fetch(url: str, headers: dict, *, timeout: float = 30) -> tuple[bytes, str]:
     request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
-            body = response.read(MAX_BYTES + 1)
-            if len(body) > MAX_BYTES:
-                raise ValueError("Remote body exceeds 32 MiB")
+            body = response.read()
             return body, response.headers.get("Content-Type", "")
     except urllib.error.HTTPError as error:
         raise ValueError(f"Source request failed with HTTP {error.code}") from error

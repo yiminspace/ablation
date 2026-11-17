@@ -453,12 +453,13 @@ class ReplayTests(EngineFixture):
         self.assertEqual(experiment["runs"][-1]["status"], "completed")
 
     def test_response_storage_failure_records_terminal_error_and_stops_batch(self):
-        from ablation_workbench import storage
         result = {"status": "completed", "response": {"output_text": "x" * 20000}, "elapsed_ms": 1}
-        def oversized_response(*_):
-            storage.MAX_BYTES = self.workbench.store.experiment_path(self.id).stat().st_size
-            return result
-        with patch("ablation_workbench.storage.MAX_BYTES", 8000), patch("ablation_workbench.engine.replay_request", side_effect=oversized_response) as replay:
+        save = self.workbench.store.save
+        def fail_completed_response(experiment, *args, **kwargs):
+            if experiment["runs"] and experiment["runs"][-1].get("response") is not None:
+                raise OSError("Synthetic disk write failure")
+            return save(experiment, *args, **kwargs)
+        with patch.object(self.workbench.store, "save", side_effect=fail_completed_response), patch("ablation_workbench.engine.replay_request", return_value=result) as replay:
             experiment = self.workbench.run(self.id, candidates=["baseline"], scenarios=["original"], repeats=2)
         self.assertEqual(replay.call_count, 1)
         self.assertEqual(len(experiment["runs"]), 1)
