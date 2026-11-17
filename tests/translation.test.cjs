@@ -242,3 +242,25 @@ test('Cached and empty diffs never submit automatic inference',async()=>{
   ui.translation.sync(ui.selection('two'));await flush();
   assert.equal(submissions,0);
 });
+
+test('Pages following an existing job never automatically resubmit it after failure',async()=>{
+  const session=fixture();session.busy=true;let submissions=0;
+  const pages=Array.from({length:2},()=>harness(async()=>structuredClone(session),async(path,body,receive)=>{
+    submissions++;
+    receive({type:'complete',session:{...fixture(),translations:[{id:'row_1',before:'旧',after:'新'}]}});
+  },true));
+  for(const ui of pages)ui.translation.sync(ui.selection('one'));
+  await flush();
+  assert.equal(submissions,0);
+  assert(pages.every(ui=>ui.translation.columnVisible()&&ui.translation.toolbar().includes('翻译中')));
+  session.busy=false;
+  for(const ui of pages)ui.poll();
+  await flush();
+  for(const ui of pages){ui.emit('focus');ui.emit('visibilitychange');ui.translation.sync(ui.selection('one'));}
+  await flush();
+  assert.equal(submissions,0,'Polling and activation leave retries to the button on every page');
+  assert(pages.every(ui=>!ui.translation.toolbar().includes('disabled')));
+  pages[0].click();await flush();
+  assert.equal(submissions,1,'The button can still resume incomplete work');
+  assert(pages[0].translation.cellMarkup(1,false).includes('新'));
+});

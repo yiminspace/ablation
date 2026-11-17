@@ -106,6 +106,7 @@
         const value = await api(`${current.endpoint}?${new URLSearchParams(current.selection)}`);
         if (current !== context || expected !== operation) return;
         session = value; drafts = new Map((value.drafts || []).map(row => [row.id,row])); loading = false;
+        if (value.busy) autoAttempted = true;
         if (value.busy || value.translations.length === value.rows.length) error = '';
         if (value.translations.length || value.busy) visible = true;
         onChange();
