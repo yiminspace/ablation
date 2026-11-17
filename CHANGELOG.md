@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v0.10.0 (2026-11-17)
+
+### Bug Fixes
+
+- Avoid automatic retries of observed translation jobs
+  ([#23](https://github.com/yiminspace/ablation/pull/23),
+  [`8779ef1`](https://github.com/yiminspace/ablation/commit/8779ef15d3113c785ec6c0f0b7cb7913d9209845))
+
+### Features
+
+- Automatically translate active prompt diffs
+  ([#23](https://github.com/yiminspace/ablation/pull/23),
+  [`8779ef1`](https://github.com/yiminspace/ablation/commit/8779ef15d3113c785ec6c0f0b7cb7913d9209845))
+
+- 激活页面时自动翻译提示词 Diff ([#23](https://github.com/yiminspace/ablation/pull/23),
+  [`8779ef1`](https://github.com/yiminspace/ablation/commit/8779ef15d3113c785ec6c0f0b7cb7913d9209845))
+
+
 ## Unreleased
 
 ### Features
