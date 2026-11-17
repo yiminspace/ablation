@@ -35,15 +35,12 @@ async function until(fn){for(let index=0;index<150;index++){const value=await fn
   browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),pageErrors=[];
   page.on('pageerror',error=>pageErrors.push(error.message));
+  delay=400;
   await page.goto(url+'?experiment='+eid);
   const button=page.getByRole('button',{name:'翻译',exact:true});
-  await until(async()=>await button.count()&&!(await button.isDisabled()));
-  assert.equal(await page.locator('#assistant-panel').count(),0);
-  assert.equal(await page.locator('.translation-column-title').count(),0);
-  const before=await page.locator('.diff-cell').allTextContents();
-  assert.equal(packets.length,0);
-  delay=400;await button.click();
   await page.locator('.translation-column-title').waitFor();
+  assert.equal(await page.locator('#assistant-panel').count(),0);
+  const before=await page.locator('.diff-cell').allTextContents();
   await page.locator('.translation-after').first().waitFor();
   assert.equal((await page.locator('.diff-headrow>span').count()),3);
   assert.deepEqual(await page.locator('.diff-cell').allTextContents(),before,'Original columns stay visible and unchanged');
@@ -77,23 +74,26 @@ async function until(fn){for(let index=0;index<150;index++){const value=await fn
   await page.setViewportSize({width:1440,height:1000});
   experiment=await api(`/api/experiments/${eid}/candidates`,{label:'Next',rationale:'Next',patch:[{op:'replace',path:'/instructions',value:'unchanged sentinel\nnext'}]});
   const candidate=experiment.candidates.at(-1).id;
+  fail=true;
   await page.goto(url+`?experiment=${eid}&candidate=${candidate}`);
-  await until(async()=>await button.count()&&!(await button.isDisabled()));
-  assert.equal(await page.locator('.translation-column-title').count(),0);
-  fail=true;await button.click();await page.locator('.translation-error').waitFor();
+  await page.locator('.translation-error').waitFor();
   assert((await page.locator('.translation-error').innerText()).includes('502'));
   fail=false;delay=2000;await button.click();await until(()=>packets.length===3);
   await page.reload();await page.locator('.translation-after').first().waitFor();
   assert.equal(packets.length,3,'Refreshing during translation does not resubmit inference');
   assert.equal((await api(`/api/experiments/${eid}`)).runs.length,0);
+  await page.getByRole('button',{name:'返回最新版',exact:true}).click();
   delay=0;
+  // Headless Chromium keeps all pages focused; control the focus signal explicitly.
+  await page.evaluate(()=>{document.hasFocus=()=>false;window.dispatchEvent(new Event('blur'));});
   await api(`/api/experiments/${eid}/candidates`,{label:'Prompt sources',rationale:'Two files',patch:[],prompt_files:[
     {path:'prompts/entry.md',before:'Old entry',after:'New entry'},
     {path:'skills/feedback.md',before:'Old guidance',after:'New guidance'},
   ]});
-  await page.goto(url+`?experiment=${eid}`);
-  await until(async()=>await button.count()&&!(await button.isDisabled()));
-  await button.click();
+  // Background pages defer inference, then follow the latest version on activation.
+  await page.waitForTimeout(500);
+  assert.equal(packets.length,3,'A background page does not start new translation');
+  await page.evaluate(()=>{delete document.hasFocus;window.dispatchEvent(new Event('focus'));});
   for(const path of ['prompts/entry.md','skills/feedback.md']){
     const file=page.locator('.requirement-group').filter({hasText:path});
     await file.locator('.translation-after').waitFor();
@@ -102,7 +102,7 @@ async function until(fn){for(let index=0;index<150;index++){const value=await fn
   const payload=packets.at(-1).messages[1].content;
   assert(payload.includes('New entry')&&payload.includes('New guidance'));
   assert.deepEqual(pageErrors,[]);
-  console.log('Translation browser checks passed (one button/third column/source preservation/diff-only payload/escaping/cache/refresh/version/error/mobile).');
+  console.log('Translation browser checks passed (automatic activation/version updates/one button/third column/source preservation/diff-only payload/escaping/cache/refresh/version/error/mobile).');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   await browser?.close();child?.kill('SIGTERM');provider?.closeAllConnections();await new Promise(resolve=>provider?provider.close(resolve):resolve());fs.rmSync(workspace,{recursive:true,force:true});
 });

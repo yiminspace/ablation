@@ -82,10 +82,19 @@
     }
   }
   window.readTranslationStream = readTranslationStream;
-  window.AblationTranslation = function ({api, onChange, stream = readTranslationStream}) {
+  window.AblationTranslation = function ({api, onChange, stream = readTranslationStream, isActive = () => !document.hidden && document.hasFocus()}) {
     let context = null, signature = '', session = null, visible = false, loading = false, pending = false, error = '', timer = null, operation = 0;
     let drafts = new Map();
+    let autoAttempted = false;
     const busy = () => pending || Boolean(session?.busy);
+    function activate() {
+      if (!isActive() || !context || loading || busy() || autoAttempted || !session?.rows.length) return;
+      autoAttempted = true;
+      translate();
+    }
+    document.addEventListener('visibilitychange', activate);
+    window.addEventListener('focus', activate);
+    window.addEventListener('pageshow', activate);
     function schedule() {
       clearTimeout(timer);
       timer = setTimeout(() => fetchSession(), 1500);
@@ -97,10 +106,12 @@
         const value = await api(`${current.endpoint}?${new URLSearchParams(current.selection)}`);
         if (current !== context || expected !== operation) return;
         session = value; drafts = new Map((value.drafts || []).map(row => [row.id,row])); loading = false;
+        if (value.busy) autoAttempted = true;
         if (value.busy || value.translations.length === value.rows.length) error = '';
         if (value.translations.length || value.busy) visible = true;
         onChange();
         if (value.busy || pending) schedule();
+        else activate();
       } catch (failure) {
         if (current !== context || expected !== operation) return;
         loading = false; error = failure.message; onChange();
@@ -109,7 +120,12 @@
     }
     async function translate() {
       if (!context || loading || busy()) return;
-      if (!session) { error = ''; loading = true; onChange(); await fetchSession(); if (!session) return; }
+      autoAttempted = true;
+      if (!session) {
+        const requested = context;
+        error = ''; loading = true; onChange(); await fetchSession();
+        if (requested !== context || !session) return;
+      }
       const current = context, currentSession = session;
       visible = true; error = ''; onChange();
       if (session.translations.length === session.rows.length) return;
@@ -159,10 +175,11 @@
     return {
       sync(value) {
         const next = value ? JSON.stringify([value.endpoint, value.selection, value.diff.rows]) : '';
-        if (next === signature) return;
-        context = value; signature = next; session = null; drafts.clear(); visible = false; pending = false; error = ''; loading = Boolean(value); operation++; clearTimeout(timer);
+        if (next === signature) { activate(); return; }
+        context = value; signature = next; session = null; drafts.clear(); visible = false; pending = false; error = ''; loading = Boolean(value); autoAttempted = false; operation++; clearTimeout(timer);
         if (value) fetchSession();
       },
+      activate,
       toolbar() {
         if (!context) return '';
         const tasks = session?.tasks || [], completed = tasks.filter(task => task.status === 'completed').length;

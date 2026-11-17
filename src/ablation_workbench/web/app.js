@@ -41,7 +41,7 @@
     if (!response.ok) throw new Error(value.error?.message || value.error || `请求失败（HTTP ${response.status}）`);
     return value;
   }
-  const translation = window.AblationTranslation({api, onChange:updateTranslation});
+  const translation = window.AblationTranslation({api, onChange:updateTranslation, isActive:() => !document.hidden && document.hasFocus() && state.tab==='diff'});
   function updateTranslation(event) {
     if(!state.diff)return;
     if(!event?.progress){renderDiff();return;}
