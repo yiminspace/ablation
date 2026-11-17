@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from .models import MAX_BYTES, canonical, pointer_get, validate_checks
+from .models import canonical, pointer_get, validate_checks
 from .sources import NoRedirect, env_value, redact, validate_url
 
 
@@ -198,10 +198,8 @@ def streamed_body(response, kind: str, on_text, secrets: list[str]) -> bytes:
     body = bytearray()
     block = []
     output = ""
-    while line := response.readline(MAX_BYTES + 1):
+    while line := response.readline():
         body.extend(line)
-        if len(body) > MAX_BYTES:
-            raise ValueError("Model response exceeds 32 MiB")
         if line.strip():
             block.append(line.decode("utf-8"))
             continue
@@ -246,9 +244,7 @@ def replay_request(request: dict, profile: dict, kind: str, secrets: list[str] |
         with urllib.request.build_opener(NoRedirect).open(http_request, timeout=timeout) as http_response:
             observed_headers = {name.lower(): value for name, value in http_response.headers.items()}
             streaming = on_text is not None and "text/event-stream" in http_response.headers.get("Content-Type", "")
-            body = streamed_body(http_response, kind, on_text, secrets or []) if streaming else http_response.read(MAX_BYTES + 1)
-            if len(body) > MAX_BYTES:
-                raise ValueError("Model response exceeds 32 MiB")
+            body = streamed_body(http_response, kind, on_text, secrets or []) if streaming else http_response.read()
             try:
                 response, events = parse_response(body, http_response.headers.get("Content-Type", ""), kind)
             except (ValueError, UnicodeError, TypeError, KeyError):

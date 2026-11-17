@@ -24,7 +24,6 @@ from .runner import AgentRunner, workspace_lock
 from .translation import Translation
 
 ACTIVE = {"queued", "running", "cancelling"}
-MAX_BODY = 32 * 1024 * 1024
 WEB = Path(__file__).parent / "web"
 DEFAULT_PORT = 8766
 BASE_PATH = "/ablation"
@@ -211,7 +210,7 @@ def make_server(workbench, port=0):
 
         def read_body(self):
             length = int(self.headers.get("Content-Length", "0"))
-            if length < 0 or length > MAX_BODY: raise ValueError("JSON upload exceeds 32 MiB")
+            if length < 0: raise ValueError("Content-Length must be nonnegative")
             content_type = self.headers.get("Content-Type", "").split(";", 1)[0]
             if content_type != "application/json": raise ValueError("Content-Type must be application/json")
             value = json.loads(self.rfile.read(length) or b"{}")

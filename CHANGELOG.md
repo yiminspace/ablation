@@ -22,6 +22,10 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+- Remove the fixed 32 MiB JSON limit from experiment storage, imports, uploads, and model responses so accumulated replay evidence can keep growing.
+
 ### Features
 
 - Automatically translate and reveal the active prompt diff, including new versions; defer background tabs and reuse saved translations.

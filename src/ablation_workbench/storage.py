@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any, Iterator
 
-from .models import MAX_BYTES, SCHEMA_VERSION, canonical, validate_id
+from .models import SCHEMA_VERSION, canonical, validate_id
 
 _locks: dict[str, threading.RLock] = {}
 _locks_guard = threading.Lock()
@@ -16,15 +16,11 @@ _locks_guard = threading.Lock()
 
 def load_json(path: str | Path) -> Any:
     path = Path(path)
-    if path.stat().st_size > MAX_BYTES:
-        raise ValueError("JSON file exceeds 32 MiB")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def atomic_json(path: Path, value: Any) -> None:
     encoded = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False).encode()
-    if len(encoded) > MAX_BYTES:
-        raise ValueError("JSON document exceeds 32 MiB")
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".ablation-", suffix=".tmp", dir=path.parent)
     try:
