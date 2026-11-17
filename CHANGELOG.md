@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.1 (2026-11-17)
+
+### Bug Fixes
+
+- Remove fixed JSON size limits ([#24](https://github.com/yiminspace/ablation/pull/24),
+  [`8497265`](https://github.com/yiminspace/ablation/commit/8497265e4b5d4e2cac3bfa6ea9def72efcac586c))
+
+
 ## v0.10.0 (2026-11-17)
 
 ### Bug Fixes
