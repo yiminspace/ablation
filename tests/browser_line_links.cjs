@@ -7,13 +7,13 @@ const path=require('node:path');
 const web=path.resolve(__dirname,'../src/ablation_workbench/web');
 const fixture={id:'exp_lines',title:'Line links',revision:1,baseline:{hash:'fixture'},source:{kind:'demo'},reviews:[],runs:[],candidates:[{id:'baseline',label:'Baseline'},{id:'v1',label:'Version 1'}],scenarios:[{id:'original',label:'Original'},{id:'scenario_other',label:'Other'}]};
 const rows=Array.from({length:650},(_,i)=>({old_line:i+1,new_line:i+1,before:`Original ${i+1}`,after:i===0?'Changed 1':`Original ${i+1}`,kind:i===0?'replace':'same'}));
-let browser,server;
+let browser,server,listRequests=0;
 (async()=>{
   server=http.createServer((req,res)=>{
     const url=new URL(req.url,'http://localhost');
     const route=url.pathname.replace(/^\/ablation/,'');
     const json=value=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));};
-    if(route==='/api/experiments')return json({experiments:[fixture]});
+    if(route==='/api/experiments'){listRequests++;return json({experiments:[fixture]});}
     if(route==='/api/experiments/exp_lines')return json(fixture);
     if(route==='/api/experiments/exp_lines/diff')return json({rows,artifact:url.searchParams.get('artifact'),base_label:'Baseline',candidate_label:url.searchParams.get('candidate'),notes:[],change_groups:[{id:'group',title:'First change',reason:'Fixture',effect:'Fixture',row_indices:[0],sources:[]}]});
     if(route==='/api/config')return json({});
@@ -31,6 +31,7 @@ let browser,server;
   const page=await context.newPage(),errors=[];page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.message));
   const line=(side,n)=>page.locator(`[data-line-side="${side}"][data-line="${n}"]`);
   await page.goto(base);await line('R',1).click();
+  assert.equal(listRequests,0,'A direct link loads without fetching the history list');
   assert.equal(new URL(page.url()).hash,'#diff-changes-R1');
   assert.equal(new URL(page.url()).searchParams.get('candidate'),'v1');
   await line('R',4).click({modifiers:['Shift']});
@@ -61,6 +62,9 @@ let browser,server;
   // Unknown/malformed fragments remain harmless.
   await page.goto(base+'#diff-changes-R0');await line('R',1).waitFor();
   assert.equal(await page.locator('.line-selected').count(),0);
+  await page.locator('[data-action="toggle-history"]').click();
+  await page.locator('#session-list [data-select-experiment="exp_lines"]').waitFor();
+  assert.equal(listRequests,1,'The history list loads when opened');
   assert.deepEqual(errors,[]);
   console.log('Line permalink browser checks passed (single/range/side/copy/history/version/artifact/scenario/scroll).');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{await browser?.close();server?.closeAllConnections();await new Promise(resolve=>server?server.close(resolve):resolve());});

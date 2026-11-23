@@ -29,7 +29,7 @@
   if (saved?.editor?.anchor && typeof saved.editor.text === 'string') state.editor = saved.editor;
   state.layout = 'split';
   if(['requirements','original'].includes(saved?.grouping))state.grouping=saved.grouping;
-  let sessionQuery = '', lastListAt = 0;
+  let sessionQuery = '', lastListAt = 0, listRequest = null;
   let updateEvents=null, loadedVersion=null, updateRequest=0;
 
   async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
@@ -161,11 +161,16 @@
     return `<div class="candidate-context${latest&&!review?'':' historical'}"><span class="vg-state badge neu">${esc(status)}</span><strong>${esc(candidateVersion(state.candidate))} · ${esc(label(state.experiment.candidates,state.candidate))}</strong>${!state.followLatest||review?'<button class="text-btn" data-action="latest-candidate">返回最新版</button>':''}</div>`;
   }
 
-  async function refreshList() {
-    const result=await api('/api/experiments');
-    state.experiments=result.experiments || [];
-    lastListAt=Date.now();renderSessions();
-    return state.experiments;
+  function refreshList() {
+    if(!listRequest) {
+      listRequest=api('/api/experiments').then(result=>{
+        state.experiments=result.experiments || [];
+        lastListAt=Date.now();
+        renderSessions();
+        return state.experiments;
+      }).finally(()=>{listRequest=null;});
+    }
+    return listRequest;
   }
   function setHistoryOpen(open) {
     document.body.classList.toggle('history-open',open);
@@ -175,6 +180,7 @@
     button.title=open?'收起会话历史':'展开会话历史';
   }
   function renderSessions() {
+    if(!lastListAt)return;
     const query=sessionQuery.trim().toLocaleLowerCase();
     const sessions=state.experiments.filter(e=>`${e.title || ''} ${e.id}`.toLocaleLowerCase().includes(query));
     $('#session-count').textContent=state.experiments.length;
@@ -203,7 +209,7 @@
       if(updateURL)clearLineAnchor();else restoreLineAnchor();
       if (updateURL) { const u=new URL(location.href);u.searchParams.set('experiment',experiment.id);u.searchParams.delete('candidate');u.searchParams.delete('scenario');history.pushState({},'',u); }
       $('#empty-state').hidden=true; $('#experiment').hidden=false;
-      if(!state.experiments.some(e=>e.id===experiment.id))await refreshList();
+      if(document.body.classList.contains('history-open')&&!state.experiments.some(e=>e.id===experiment.id))refreshList().catch(error=>toast(error.message));
       renderExperiment(); await loadDiff();
     } catch (error) { globalStatus(error.message); if(!state.experiment) $('#empty-state').hidden=false; }
   }
@@ -848,16 +854,21 @@
   }
   async function poll() {
     if(pollRunning||document.hidden||state.busy)return;
+    if(document.body.classList.contains('history-open')&&Date.now()-lastListAt>10000)refreshList().catch(()=>{});
     pollRunning=true;
     try {
-      const expId=state.experiment?.id;
-      const results=await Promise.allSettled([api('/api/jobs'),expId?api(`/api/experiments/${encodeURIComponent(expId)}`):Promise.resolve(null),Date.now()-lastListAt>10000?refreshList():Promise.resolve()]);
-      if(expId!==state.experiment?.id)return;
+      const experiment=state.experiment,sequence=state.requestSequence;
+      const results=await Promise.allSettled([
+        api('/api/jobs'),
+        experiment?api(`/api/experiments/${encodeURIComponent(experiment.id)}?revision=${encodeURIComponent(experiment.revision)}`):Promise.resolve(null)
+      ]);
+      if(sequence!==state.requestSequence||experiment?.id!==state.experiment?.id)return;
       if(results[0].status==='fulfilled') {
         const jobs=results[0].value.jobs || [],signature=JSON.stringify(jobs);
         if(signature!==state.lastJobs){state.jobs=jobs;state.lastJobs=signature;if(state.experiment){renderJobs();if(!editing())renderRuns();else state.deferred=true;}}
       }
-      if(results[1].status==='fulfilled'&&results[1].value&&results[1].value.revision!==state.experiment?.revision){state.experiment=results[1].value;renderRunLogFeed();if(editing())state.deferred=true;else{renderExperiment();await loadDiff();}}
+      const latest=results[1].status==='fulfilled'?results[1].value:null;
+      if(latest?.id===experiment?.id&&latest?.revision>state.experiment?.revision){state.experiment=latest;renderRunLogFeed();if(editing())state.deferred=true;else{renderExperiment();await loadDiff();}}
     } finally {pollRunning=false;}
   }
   async function createDemo(button) {
@@ -899,7 +910,12 @@
         case 'toggle-run-picker':setRunPicker($('#run-drawer-picker').hidden,true);break;
         case 'latest-candidate':showLatestCandidate();renderExperiment();await loadDiff();break;
         case 'close-run-drawer':closeRunDrawer();break;
-        case 'toggle-history': {const open=!document.body.classList.contains('history-open');setHistoryOpen(open);if(open)$('#session-search').focus();break;}
+        case 'toggle-history': {
+          const open=!document.body.classList.contains('history-open');
+          setHistoryOpen(open);
+          if(open){$('#session-search').focus();if(Date.now()-lastListAt>10000)await refreshList();}
+          break;
+        }
         case 'refresh-sessions': await refreshList();break;
         case 'experiments': await experimentsModal();break;
         case 'import':importModal();break;
@@ -1064,19 +1080,24 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
 
   async function boot() {
-    const results=await Promise.allSettled([refreshList(),api('/api/config'),api('/api/jobs'),api('/api/update'),api('/api/version')]);
-    if(results[1].status==='fulfilled')state.config=results[1].value;
-    if(results[2].status==='fulfilled')state.jobs=results[2].value.jobs || [];
-    if(results[3].status==='fulfilled'){state.update=results[3].value;updateIndicator();}
-    if(results[4].status==='fulfilled')loadedVersion=results[4].value.version;
-    startUpdateEvents();
     const requested=new URL(location.href).searchParams.get('experiment');
-    if(requested)await selectExperiment(requested,false);
-    else if(state.experiments.length)await selectExperiment(state.experiments[0].id);
-    else $('#empty-state').hidden=false;
-    if(results[0].status==='rejected')globalStatus(`无法读取工作区：${results[0].reason.message}`);
-    if(state.whatsNew)await updatesModal();
+    const selection=requested?selectExperiment(requested,false):refreshList().then(experiments=>{
+      if(experiments.length)return selectExperiment(experiments[0].id);
+      $('#empty-state').hidden=false;
+    }).catch(error=>{
+      $('#empty-state').hidden=false;
+      globalStatus(`无法读取工作区：${error.message}`);
+    });
+    const startup=Promise.allSettled([
+      api('/api/config').then(config=>{state.config=config;}),
+      refreshJobs().then(()=>{if(state.experiment){renderJobs();if(!editing())renderRuns();}}),
+      refreshUpdateInfo(),
+      checkServerVersion()
+    ]).then(startUpdateEvents);
+    await selection;
     setInterval(poll,2500);
+    await startup;
+    if(state.whatsNew&&!state.modal)await updatesModal();
   }
 
 function evidenceLinks(run) {

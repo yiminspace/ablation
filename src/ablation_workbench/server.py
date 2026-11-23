@@ -281,7 +281,14 @@ def make_server(workbench, port=0):
                     result = {"text": changelog()}
                 elif match := re.fullmatch(r"/api/experiments/([A-Za-z0-9_-]+)(?:/(.*))?", path):
                     eid, action = match.groups()
-                    if not action: result = workbench.get(eid)
+                    if not action:
+                        known_revision = query.get("revision")
+                        if known_revision is not None:
+                            revision = workbench.experiment_summary(eid)["revision"]
+                            if str(revision) == known_revision:
+                                self.send_json({"revision": revision})
+                                return
+                        result = workbench.get(eid)
                     elif action == "diff":
                         result = workbench.compare(eid, **{k: v for k, v in query.items() if k in ("base", "candidate", "scenario", "artifact", "format")})
                     elif action == "translation":

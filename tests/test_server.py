@@ -98,6 +98,25 @@ class ServerTests(unittest.TestCase):
                 self.assertGreater(len(response.read()), 100)
                 self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
 
+    def test_experiment_poll_uses_persisted_summary_and_detects_external_writes(self):
+        status, experiment = self.request("/ablation/api/demo", {})
+        self.assertEqual(status, 200)
+        eid, revision = experiment["id"], experiment["revision"]
+        route = f"/api/experiments/{eid}"
+        self.assertEqual(self.request("/api/experiments")[1]["experiments"][0]["revision"], revision)
+
+        reopened = Workbench(self.temp.name)
+        with patch.object(reopened.store, "load", side_effect=AssertionError("Experiment JSON should not be read")):
+            self.assertEqual(reopened.list_experiments()[0]["revision"], revision)
+        with patch.object(self.workbench.store, "load", side_effect=AssertionError("Experiment JSON should not be read")):
+            self.assertEqual(self.request(f"{route}?revision={revision}"), (200, {"revision": revision}))
+
+        with reopened.store.lock(eid):
+            experiment["title"] = "Updated outside the GUI"
+            reopened.store.save(experiment)
+        self.assertEqual(self.request(f"{route}?revision={revision}"), (200, experiment))
+        self.assertEqual(self.request("/api/experiments")[1]["experiments"][0]["title"], experiment["title"])
+
     def test_running_service_keeps_browser_assets_paired_with_loaded_api(self):
         from ablation_workbench.server import WEB
         with tempfile.TemporaryDirectory() as directory:

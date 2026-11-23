@@ -176,39 +176,52 @@ class Workbench:
     def __init__(self, workspace: str | Path):
         self.store = Store(workspace)
         self.workspace = self.store.workspace
-        self._recover_interrupted_runs()
 
-    def _recover_interrupted_runs(self, experiment_id: str | None = None) -> None:
+    @staticmethod
+    def _running_owners(experiment: dict) -> list[int]:
+        return sorted({run["owner_pid"] for run in experiment.get("runs", [])
+                       if run.get("status") == "running" and run.get("owner_pid")})
+
+    def _recover_interrupted_runs(self, experiment: dict) -> dict:
         from .runner import _alive
-        identifiers = [experiment_id] if experiment_id is not None else [path.parent.name for path in self.store.root.glob("*/experiment.json")]
-        for identifier in identifiers:
-            data = self._load(identifier)
-            if not any(run.get("status") == "running" and run.get("owner_pid") and not _alive(run["owner_pid"]) for run in data.get("runs", [])):
-                continue
-            with self.store.lock(identifier):
-                current = self._load(identifier)
-                changed = False
-                for run in current.get("runs", []):
-                    if run.get("status") == "running" and run.get("owner_pid") and not _alive(run["owner_pid"]):
-                        run.pop("_completion_reserve", None)
-                        run.update(status="interrupted", passed=None, error="Replay host exited before recording an outcome; execution is unconfirmed.")
-                        changed = True
-                if changed:
-                    self.store.save(current)
+        if all(_alive(pid) for pid in self._running_owners(experiment)):
+            return experiment
+        identifier = experiment["id"]
+        with self.store.lock(identifier):
+            current = self._load(identifier)
+            changed = False
+            for run in current.get("runs", []):
+                if run.get("status") == "running" and run.get("owner_pid") and not _alive(run["owner_pid"]):
+                    run.pop("_completion_reserve", None)
+                    run.update(status="interrupted", passed=None, error="Replay host exited before recording an outcome; execution is unconfirmed.")
+                    changed = True
+            if changed:
+                self.store.save(current)
+            return current
+
+    def experiment_summary(self, experiment_id: str) -> dict:
+        from .runner import _alive
+
+        path = self.store.experiment_path(experiment_id)
+        version = self.store.file_version(path)
+        cached = self.store.read_summary(path, version)
+        if cached is not None and all(_alive(pid) for pid in cached["running_owners"]):
+            return cached["summary"]
+
+        experiment = self.get(experiment_id)
+        summary = {key: experiment[key] for key in ("schema_version", "id", "title", "created_at", "revision")}
+        summary["source"] = {key: value for key, value in experiment["source"].items() if key != "evidence"}
+        summary["candidate_count"] = len(experiment["candidates"])
+        summary["run_count"] = len(experiment["runs"])
+        self.store.cache_summary(path, version, summary, self._running_owners(experiment))
+        return summary
 
     def list_experiments(self) -> list[dict]:
-        result = []
-        for path in self.store.root.glob("*/experiment.json"):
-            data = self.get(path.parent.name)
-            result.append({key: data[key] for key in ("schema_version", "id", "title", "created_at", "revision", "source")})
-            result[-1]["source"] = {key: value for key, value in data["source"].items() if key != "evidence"}
-            result[-1]["candidate_count"] = len(data["candidates"])
-            result[-1]["run_count"] = len(data["runs"])
+        result = [self.experiment_summary(path.parent.name) for path in self.store.root.glob("*/experiment.json")]
         return sorted(result, key=lambda item: item["created_at"], reverse=True)
 
     def get(self, experiment_id: str) -> dict:
-        self._recover_interrupted_runs(experiment_id)
-        return self._load(experiment_id)
+        return self._recover_interrupted_runs(self._load(experiment_id))
 
     def _load(self, experiment_id: str) -> dict:
         data = self.store.load(experiment_id)
@@ -420,8 +433,6 @@ class Workbench:
         base_item = find_item(experiment["candidates"], base, "candidate")
         candidate_item = find_item(experiment["candidates"], candidate, "candidate")
         scene = find_item(experiment["scenarios"], scenario, "scenario")
-        before_request = request_for(experiment, base, scenario)
-        after_request = request_for(experiment, candidate, scenario)
         base_label, candidate_label = base_item["label"], candidate_item["label"]
         notes = [f"Scenario: {scene['label']} ({scene['origin']}). {scene['description']}"]
         if artifact == "prompt-files":
@@ -435,13 +446,15 @@ class Workbench:
             return {"artifact": artifact, "base_label": base_label, "candidate_label": candidate_label,
                     "files": files, "rows": [], "rationale": candidate_item["rationale"]}
         if artifact == "changes":
-            before = prompt_view(experiment["baseline"]["request"])
-            after = prompt_view(request_for(experiment, candidate, "original"))
             base_label = "原始提示词"
             if format == "legacy":
-                before, after = experiment["baseline"]["request"], after_request
+                before, after = experiment["baseline"]["request"], request_for(experiment, candidate, scenario)
+            else:
+                before = prompt_view(experiment["baseline"]["request"])
+                after = prompt_view(request_for(experiment, candidate, "original"))
         elif artifact == "prompt":
-            before, after = prompt_view(before_request), prompt_view(after_request)
+            before = prompt_view(request_for(experiment, base, scenario))
+            after = prompt_view(request_for(experiment, candidate, scenario))
         elif artifact == "input":
             before = input_view(experiment["baseline"]["request"])
             after = input_view(request_for(experiment, "baseline", scenario))
@@ -470,7 +483,8 @@ class Workbench:
                     notes.append(f"{item['label']}: no completed replay. Historical source responses are not paired replay evidence.")
             before, after = outputs
         else:
-            before, after = before_request, after_request
+            before = request_for(experiment, base, scenario)
+            after = request_for(experiment, candidate, scenario)
         if artifact in {"changes", "prompt"} and format == "readable":
             before_text, after_text = readable_request(before), readable_request(after)
         elif artifact == "changes" and format == "legacy":

@@ -151,6 +151,7 @@ async function main(){
   assert((await page.locator('.requirement-group').filter({has:page.getByRole('heading',{name:'其他改动与评论',exact:true})}).innerText()).includes('Unrelated policy change'));
   await page.getByRole('button',{name:'展开会话历史',exact:true}).click();
   await page.locator('#session-search').fill(eid);
+  await page.locator(`#session-list [data-select-experiment="${eid}"]`).waitFor();
   assert.equal(await page.locator('.session-entry').count(),1);
   await page.locator(`#session-list [data-select-experiment="${eid}"]`).click();
   await page.waitForURL(current=>current.searchParams.get('experiment')===eid);
