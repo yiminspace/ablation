@@ -72,6 +72,9 @@ class EngineTests(EngineFixture):
         raw = self.workbench.compare(self.id, candidate=candidate, artifact="request")
         self.assertEqual(json.loads(raw["after"])["input"], [])
         scenario = self.add_scenario()
+        self.assertEqual(self.workbench.compare(self.id, candidate=candidate, scenario=scenario, artifact="changes")["rows"], diff["rows"])
+        with self.assertRaisesRegex(ValueError, "overlap"):
+            self.workbench.compare(self.id, candidate=candidate, scenario=scenario, artifact="request")
         tool_candidate = self.add_candidate()
         diff = self.workbench.compare(self.id, candidate=tool_candidate, scenario=scenario, artifact="changes")
         self.assertNotIn("Did it send?", diff["before"])

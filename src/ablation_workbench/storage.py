@@ -98,6 +98,39 @@ class Store:
             raise ValueError("Unsupported experiment schema version")
         return data
 
+    @staticmethod
+    def file_version(path: Path) -> list[int]:
+        stat = path.stat()
+        return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+
+    @staticmethod
+    def read_summary(path: Path, version: list[int]) -> dict | None:
+        summary_path = path.with_name(".summary.json")
+        if summary_path.is_symlink():
+            return None
+        try:
+            cached = load_json(summary_path)
+            if (cached["version"] == version and cached["summary"]["id"] == path.parent.name
+                    and isinstance(cached["summary"]["revision"], int)
+                    and isinstance(cached["summary"]["created_at"], str)
+                    and isinstance(cached["running_owners"], list)
+                    and all(isinstance(pid, int) for pid in cached["running_owners"])):
+                return cached
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return None
+
+    def cache_summary(self, path: Path, version: list[int], summary: dict, running_owners: list[int]) -> None:
+        # A concurrent replacement can invalidate a snapshot, never validate it.
+        # Summaries are disposable and may be unavailable on a read-only workspace.
+        try:
+            if self.file_version(path) == version:
+                atomic_json(path.with_name(".summary.json"), {
+                    "version": version, "summary": summary, "running_owners": running_owners,
+                })
+        except OSError:
+            pass
+
     def save(self, experiment: dict, *, bump: bool = True) -> None:
         if bump:
             experiment["revision"] += 1
