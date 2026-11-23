@@ -172,8 +172,26 @@ async function main(){
   exp=await api(`/api/experiments/${eid}`);assert.equal(exp.reviews.length,1);assert.equal(exp.runs.length,0);
   const rid=exp.reviews[0].id;
   await page.getByRole('button',{name:'完成',exact:true}).click();
+  let releaseConfig;
+  const configGate=new Promise(resolve=>{releaseConfig=resolve;});
+  const delayConfig=async route=>{await configGate;await route.continue();};
+  await page.route('**/api/config',delayConfig);
+  await page.reload();
   await page.locator('[data-tab="discussion"]').click();
-  await page.locator(`[data-dispatch-review="${rid}"]`).click();
+  const dispatch=page.locator(`[data-dispatch-review="${rid}"]`);
+  await dispatch.waitFor();
+  assert.equal(await dispatch.isDisabled(),true);
+  await page.locator(`.review-card-footer [data-reply-review="${rid}"]`).click();
+  const replyDraft=page.locator(`[data-reply-form="${rid}"] textarea`);
+  await replyDraft.fill('Draft while configuration loads');
+  releaseConfig();
+  await page.waitForFunction(id=>document.querySelector(`[data-dispatch-review="${id}"]`)?.disabled===false,rid);
+  await page.unroute('**/api/config',delayConfig);
+  assert.equal(await replyDraft.inputValue(),'Draft while configuration loads');
+  assert.equal(await replyDraft.evaluate(el=>document.activeElement===el),true);
+  await replyDraft.fill('');
+  await page.locator(`[data-reply-form="${rid}"] [data-reply-review]`).click();
+  await dispatch.click();
   await until(async()=>{exp=await api(`/api/experiments/${eid}`);return exp.reviews[0].replies.length;});
   assert.equal(exp.candidates.length,2);assert.equal(exp.runs.length,0);
   await page.locator('#discussion-view').getByText('Fixture explanation: authorized choices define the current task.',{exact:true}).first().waitFor({timeout:15000});
@@ -304,7 +322,9 @@ async function main(){
     await page.locator('#run-drawer').waitFor({state:'hidden'});
   }
   assert.equal(accessibleRuns.size,4);
+  await page.getByRole('button',{name:'展开会话历史',exact:true}).click();
   assert((await page.locator(`#session-list [data-select-experiment="${eid}"]`).innerText()).includes('4 次回放'));
+  await page.getByRole('button',{name:'收起会话历史',exact:true}).click();
   assert.equal(packets.length,4);assert.deepEqual(packets.map(x=>x.input),Array(4).fill(original.input));
   await page.locator('[data-tab="diff"]').click();
   await page.locator('.artifact-nav [data-artifact="response"]').click();
