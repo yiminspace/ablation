@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.10.2 (2026-11-23)
+
+### Bug Fixes
+
+- 加快实验页加载和刷新 ([#25](https://github.com/yiminspace/ablation/pull/25),
+  [`3aac960`](https://github.com/yiminspace/ablation/commit/3aac960d2da130016cb34c15a1160c2fdde8ba8c))
+
+- 配置到达后启用 Agent 派发控件 ([#25](https://github.com/yiminspace/ablation/pull/25),
+  [`3aac960`](https://github.com/yiminspace/ablation/commit/3aac960d2da130016cb34c15a1160c2fdde8ba8c))
+
+
 ## v0.10.1 (2026-11-17)
 
 ### Bug Fixes
