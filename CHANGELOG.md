@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.3 (2026-11-24)
+
+### Bug Fixes
+
+- Retry untranslated English prose ([#26](https://github.com/yiminspace/ablation/pull/26),
+  [`f628d31`](https://github.com/yiminspace/ablation/commit/f628d318c80de0a6c2f67e4a1f515ee66e5ab902))
+
+
 ## v0.10.2 (2026-11-23)
 
 ### Bug Fixes
