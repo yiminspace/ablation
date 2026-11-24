@@ -14,7 +14,7 @@ from ablation_workbench.cli import main
 from ablation_workbench.engine import Workbench, split_diff
 from ablation_workbench.server import close_jobs, make_server
 from ablation_workbench.storage import atomic_json
-from ablation_workbench.translation import Translation, changed_rows, llm_config, model_credential, partial_rows, translation_tasks
+from ablation_workbench.translation import Translation, changed_rows, llm_config, model_credential, partial_rows, translated_rows, translation_tasks
 
 
 class TranslationTests(unittest.TestCase):
@@ -130,6 +130,28 @@ class TranslationTests(unittest.TestCase):
                 'status': 'completed', 'response': {'choices': [{'message': {'content': text}}]}}):
                 with self.assertRaises(ValueError): self.translation.run(self.eid, **self.options())
             self.assertEqual(self.translation.get(self.eid, **self.selection)['translations'], [])
+
+    def test_verbatim_english_prose_is_retried_without_discarding_code(self):
+        rows = [
+            {'id': 'row_0', 'before': '', 'after': '      requests to open or operate a settings page. For other'},
+            {'id': 'row_1', 'before': '', 'after': 'from pydantic import BaseModel, Field'},
+        ]
+        copied = json.dumps({'rows': rows})
+        with self.assertRaisesRegex(ValueError, '原样返回'):
+            translated_rows(copied, rows)
+        self.assertEqual(translated_rows(json.dumps({'rows': rows[1:]}), rows[1:]), rows[1:])
+
+        diff = {'rows': [{'kind': 'add', 'before': '', 'after': row['after']} for row in rows]}
+        with patch.object(self.workbench, 'compare', return_value=diff):
+            path, session = self.translation.context(self.eid)
+            atomic_json(path, {'translations': rows})
+            self.assertEqual(self.translation.get(self.eid)['translations'], rows[1:])
+            with patch('ablation_workbench.translation.replay_request', side_effect=self.translated) as transport:
+                result = self.translation.run(self.eid, session_id=session['id'])
+            request = transport.call_args.args[0]
+            self.assertEqual(json.loads(request['messages'][1]['content'])['rows'], rows[:1])
+            self.assertEqual(result['translations'][0]['after'], '新版译文')
+            self.assertEqual(result['translations'][1], rows[1])
 
     def test_cli_configures_source_outside_gui_and_preserves_profiles(self):
         self.config['profiles'] = {'existing': {'base_url': 'https://replay.invalid/v1'}}
