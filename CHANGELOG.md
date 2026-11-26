@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.10.4 (2026-11-26)
+
+### Bug Fixes
+
+- Preserve changes in Chinese diff translations
+  ([#28](https://github.com/yiminspace/ablation/pull/28),
+  [`7ef9350`](https://github.com/yiminspace/ablation/commit/7ef93503e37e85d2c8f0e651df823edce78466d9))
+
+
 ## v0.10.3 (2026-11-24)
 
 ### Bug Fixes
