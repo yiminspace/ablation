@@ -51,6 +51,16 @@ test('Refresh restores the column, and switching versions clears it',async()=>{
   assert.equal(ui.translation.cellMarkup(1,false),'');
 });
 
+test('Identical translations of changed source text show a notice instead of fabricated highlights',async()=>{
+  const session=fixture();
+  session.translations=[{id:'row_1',before:'相同译文',after:'相同译文'}];
+  const ui=harness(async()=>session);
+  ui.translation.sync(ui.selection('one'));await flush();
+  const markup=ui.translation.cellMarkup(1,false);
+  assert.match(markup,/两侧译文相同，请对照原文改动/);
+  assert.doesNotMatch(markup,/<mark/);
+});
+
 test('Late old-version inference cannot populate the newly selected diff',async()=>{
   const pending=deferred();
   const ui=harness(async(url,body)=>body?pending.promise:fixture(url.includes('candidate=two')?'two':'one'));

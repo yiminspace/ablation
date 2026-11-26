@@ -20,6 +20,9 @@ SYSTEM = """Translate the supplied prompt changes into Chinese.
 Return ONLY JSON with this shape:
 {"rows":[{"id":"exact supplied id","before":"Chinese translation","after":"Chinese translation"}]}
 Translate every supplied before and after field completely. Include every supplied id exactly once.
+Compare the two source sides before translating. Translate shared text consistently and keep each
+added or removed clause only on the side where it appears. Check that all changed instructions,
+conditions and constraints are visible in the resulting pair, even in a long mostly shared paragraph.
 Translate English prose even when a diff line contains only part of a sentence or comes from
 a source code or configuration file. Leave code-only fragments and identifiers as written.
 An empty source side must have an empty translation. Preserve technical identifiers, tool names,
