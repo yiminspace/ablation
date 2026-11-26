@@ -194,7 +194,10 @@
         const translated = completed || drafts.get(`row_${index}`);
         if (!translated) return '<div class="diff-translation"></div>';
         const [beforeHtml,afterHtml] = completed ? inlineChanges(translated.before,translated.after,true) : [esc(translated.before),esc(translated.after)];
-        return `<div class="diff-translation">${translated.before ? `<div class="translation-before"><span aria-hidden="true">−</span><span>${beforeHtml}</span></div>` : ''}${translated.after ? `<div class="translation-after"><span aria-hidden="true">+</span><span>${afterHtml}</span></div>` : ''}</div>`;
+        const source = completed && session.rows.find(row => row.id === completed.id);
+        const identical = translated.before && translated.before === translated.after && source && source.before !== source.after;
+        const note = identical ? '<div class="translation-note">两侧译文相同，请对照原文改动。</div>' : '';
+        return `<div class="diff-translation">${translated.before ? `<div class="translation-before"><span aria-hidden="true">−</span><span>${beforeHtml}</span></div>` : ''}${translated.after ? `<div class="translation-after"><span aria-hidden="true">+</span><span>${afterHtml}</span></div>` : ''}${note}</div>`;
       },
     };
   };
